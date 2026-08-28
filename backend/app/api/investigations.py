@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -211,3 +212,81 @@ async def get_risk_history(id: str, db: AsyncSession = Depends(get_db)):
 async def get_explanation(id: str, db: AsyncSession = Depends(get_db)):
     from ..engine.explanation import RiskExplanationService
     return await RiskExplanationService.generate_explanation(id, db)
+
+@router.get("/{id}/indicators")
+async def get_investigation_indicators(id: str, db: AsyncSession = Depends(get_db)):
+    from ..models.iocs import IOC
+    result = await db.execute(select(IOC).filter_by(investigation_id=id))
+    iocs = result.scalars().all()
+    return [{"type": ioc.ioc_type, "value": ioc.value, "first_seen": ioc.first_seen} for ioc in iocs]
+
+@router.get("/{id}/threat-intelligence")
+async def get_investigation_threat_intel(id: str, db: AsyncSession = Depends(get_db)):
+    from ..models.iocs import IOC
+    from ..engine.threat_intel_provider import registry
+    import asyncio
+    
+    result = await db.execute(select(IOC).filter_by(investigation_id=id))
+    iocs = result.scalars().all()
+    
+    all_results = []
+    tasks = []
+    for ioc in iocs:
+        tasks.append(registry.lookup(ioc.value, ioc.ioc_type.upper()))
+        
+    if tasks:
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
+        for res_list in completed:
+            if isinstance(res_list, list):
+                all_results.extend([r.model_dump(mode='json') for r in res_list])
+                
+    return all_results
+
+class AnalyzeRequest(BaseModel):
+    input_type: str
+    content: str
+
+@router.post("/analyze")
+async def analyze_input(
+    req: AnalyzeRequest,
+    background_tasks: BackgroundTasks, 
+    db: AsyncSession = Depends(get_db)
+):
+    from ..models.investigation import InputType, Investigation, InvestigationStatus
+    from ..engine.orchestrator import Orchestrator
+    try:
+        input_type_enum = InputType(req.input_type.upper())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Unsupported input type")
+        
+    import uuid
+    inv = Investigation(
+        display_id=f"INV-2026-{uuid.uuid4().hex[:6].upper()}",
+        input_type=input_type_enum,
+        target=req.content,
+        status=InvestigationStatus.QUEUED
+    )
+    db.add(inv)
+    await db.commit()
+    await db.refresh(inv)
+    
+    background_tasks.add_task(Orchestrator.start_investigation, inv.id)
+    return {"investigation_id": inv.id, "input_type": inv.input_type.value, "status": inv.status.value}
+
+@router.post("/input/preview")
+async def preview_input(req: AnalyzeRequest):
+    from ..models.investigation import InputType
+    from ..engine.input_processor import UniversalInputProcessor
+    try:
+        input_type_enum = InputType(req.input_type.upper())
+    except ValueError:
+        return {"detected_type": "UNKNOWN", "warnings": ["Unsupported input type"]}
+        
+    threat_obj = UniversalInputProcessor.process_input(input_type_enum, req.content)
+    
+    return {
+        "detected_type": threat_obj.input_type.value,
+        "normalized_content": threat_obj.normalized_text,
+        "indicators": [i.model_dump() for i in threat_obj.extracted_indicators],
+        "warnings": [] if threat_obj.urls else ["No external indicators detected."]
+    }

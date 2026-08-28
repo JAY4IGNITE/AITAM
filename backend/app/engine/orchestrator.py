@@ -37,6 +37,11 @@ class Orchestrator:
                 await session.commit()
                 await Orchestrator.log_event(session, inv.id, "INITIAL_ANALYSIS_STARTED", "Orchestrator")
                 
+                from ..engine.input_processor import UniversalInputProcessor
+                threat_object = UniversalInputProcessor.process_input(inv.input_type, inv.target)
+                inv.normalized_input = threat_object.normalized_text
+                await session.commit()
+                
                 from ..models.journey import RiskAssessment
                 init_risk = await RiskEngine.calculate_risk(inv.id, session)
                 session.add(RiskAssessment(
@@ -132,6 +137,7 @@ class Orchestrator:
                         await Orchestrator.log_event(session, inv.id, "DEEP_ANALYSIS_TRIGGERED", "Orchestrator")
                 else:
                     inv.final_risk_score = risk_output.score
+                    final_risk_output = risk_output
                     
                 # 6. EVIDENCE CORRELATION
                 inv.status = InvestigationStatus.EVIDENCE_CORRELATION

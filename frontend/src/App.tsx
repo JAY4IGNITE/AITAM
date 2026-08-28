@@ -2,54 +2,155 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Shield, LayoutDashboard, Activity, FileWarning, Search, SearchCheck } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThreatIntel } from './pages/ThreatIntel';
 
 // We'll create these components next
 const Dashboard = () => <div className="p-8"><h1 className="text-3xl font-bold mb-6">Dashboard</h1><div className="glass-panel p-6 h-64 flex items-center justify-center">Analytics coming soon</div></div>;
 
 const Investigate = () => {
-  const [url, setUrl] = React.useState('');
+  const [inputType, setInputType] = React.useState('URL');
+  const [content, setContent] = React.useState('');
   const [loading, setLoading] = React.useState(false);
-  const navigate = import('react-router-dom').then(m => m.useNavigate);
-  // Note: we can't easily use hooks dynamically inside this simplified component structure if they aren't imported properly, 
-  // so let's just use window.location for MVP.
-  
-  const submit = async () => {
-    if (!url) return;
+  const [preview, setPreview] = React.useState<any>(null);
+
+  const tabs = ['URL', 'EMAIL', 'SMS', 'QR', 'WEBPAGE', 'SOCIAL'];
+
+  const getPreview = async () => {
+    if (!content) return;
     setLoading(true);
     try {
-      const res = await fetch('/api/investigations/', {
+      const res = await fetch('/api/investigations/input/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input_type: 'URL', target: url })
+        body: JSON.stringify({ input_type: inputType, content })
       });
       const data = await res.json();
-      window.location.href = `/investigations/${data.id}`;
+      setPreview(data);
     } catch (e) {
-      console.error(e);
-      alert('Failed to submit');
+      alert('Failed to get preview');
+    }
+    setLoading(false);
+  };
+
+  const startAnalysis = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/investigations/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input_type: inputType, content })
+      });
+      const data = await res.json();
+      window.location.href = `/investigations/${data.investigation_id}`;
+    } catch (e) {
+      alert('Failed to start analysis');
     }
     setLoading(false);
   };
 
   return (
-    <div className="p-8">
-      <h1 className="text-3xl font-bold mb-6">Start Investigation</h1>
-      <div className="glass-panel p-6 flex flex-col items-center justify-center h-64">
-        <input 
-          type="text" 
-          placeholder="Enter URL to analyze..." 
-          className="w-full max-w-lg bg-black/50 border border-white/10 rounded-md p-3 mb-4 focus:outline-none focus:border-primary text-white" 
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <button 
-          className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-semibold hover:opacity-90 transition disabled:opacity-50"
-          onClick={submit}
-          disabled={loading}
-        >
-          {loading ? 'Analyzing...' : 'Analyze'}
-        </button>
-      </div>
+    <div className="p-8 max-w-4xl mx-auto">
+      <h1 className="text-3xl font-bold mb-6">Input Intelligence Center</h1>
+      
+      {!preview ? (
+        <div className="glass-panel overflow-hidden">
+          <div className="flex border-b border-white/10 overflow-x-auto">
+            {tabs.map(tab => (
+              <button 
+                key={tab}
+                className={`px-6 py-3 font-semibold text-sm transition ${inputType === tab ? 'border-b-2 border-primary text-primary bg-primary/10' : 'text-gray-400 hover:text-white'}`}
+                onClick={() => setInputType(tab)}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          
+          <div className="p-6">
+            <textarea
+              className="w-full h-48 bg-black/50 border border-white/10 rounded-md p-4 mb-4 focus:outline-none focus:border-primary text-white font-mono text-sm"
+              placeholder={`Paste ${inputType} content here...`}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
+            <div className="flex justify-end">
+              <button 
+                className="bg-primary/20 text-primary border border-primary/50 px-6 py-2 rounded-md font-semibold hover:bg-primary hover:text-white transition disabled:opacity-50"
+                onClick={getPreview}
+                disabled={loading || !content}
+              >
+                {loading ? 'Processing...' : 'Preview Input'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="glass-panel p-6">
+          <h2 className="text-xl font-bold mb-4 border-b border-white/10 pb-2">Input Preview</h2>
+          
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Detected Type</div>
+              <div className="font-semibold text-primary">{preview.detected_type}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-500 mb-1">Extracted Indicators</div>
+              <div className="font-semibold text-white">{preview.indicators?.length || 0} found</div>
+            </div>
+          </div>
+          
+          <div className="mb-6">
+            <h3 className="text-sm font-semibold text-gray-400 mb-2">Normalized Content Preview</h3>
+            <div className="bg-black/50 border border-white/10 p-3 rounded text-sm text-gray-300 font-mono h-24 overflow-y-auto whitespace-pre-wrap">
+              {preview.normalized_content}
+            </div>
+          </div>
+          
+          {preview.indicators && preview.indicators.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-400 mb-2">Extracted Entities</h3>
+              <div className="space-y-2">
+                {preview.indicators.map((ind: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3 bg-black/30 p-2 rounded">
+                    <span className="text-xs font-bold text-blue-400 w-16">[{ind.type}]</span>
+                    <span className="text-sm text-gray-300 truncate">{ind.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {preview.warnings && preview.warnings.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-semibold text-gray-400 mb-2">Warnings</h3>
+              <ul className="space-y-1">
+                {preview.warnings.map((w: string, i: number) => (
+                  <li key={i} className="text-sm text-yellow-400 flex items-start gap-2">
+                    <span>⚠</span> <span>{w}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          <div className="flex justify-between items-center mt-6 pt-4 border-t border-white/10">
+            <button 
+              className="text-gray-400 hover:text-white transition px-4 py-2"
+              onClick={() => setPreview(null)}
+              disabled={loading}
+            >
+              ← Back to Input
+            </button>
+            <button 
+              className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-md font-semibold transition shadow-lg shadow-red-500/20 disabled:opacity-50"
+              onClick={startAnalysis}
+              disabled={loading}
+            >
+              {loading ? 'Launching...' : 'START SECURITY ANALYSIS'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -113,6 +214,12 @@ const InvestigationDetails = () => {
   const { data: explanation } = useQuery({
     queryKey: ['explanation', id],
     queryFn: () => fetch(`/api/investigations/${id}/explanation`).then(res => res.json()),
+    enabled: inv?.status === 'COMPLETED'
+  });
+
+  const { data: threatIntel } = useQuery({
+    queryKey: ['threatIntel', id],
+    queryFn: () => fetch(`/api/investigations/${id}/threat-intelligence`).then(res => res.json()),
     enabled: inv?.status === 'COMPLETED'
   });
 
@@ -245,6 +352,45 @@ const InvestigationDetails = () => {
 
         {/* Evidence Graph Panel */}
         <div className="glass-panel p-6 md:col-span-2">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Threat Intelligence</h2>
+          {threatIntel && threatIntel.length > 0 ? (
+            <div className="space-y-4">
+              {threatIntel.map((ti: any, idx: number) => (
+                <div key={idx} className="bg-black/40 p-4 rounded-md border border-white/5">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <span className="text-xs text-blue-400 font-bold uppercase tracking-wider">{ti.indicator_type}</span>
+                      <h3 className="font-bold text-gray-200">{ti.indicator}</h3>
+                    </div>
+                    <div className="text-right">
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${ti.verdict === 'MALICIOUS' ? 'bg-red-500/20 text-red-500' : ti.verdict === 'SUSPICIOUS' ? 'bg-orange-500/20 text-orange-500' : 'bg-green-500/20 text-green-500'}`}>
+                        {ti.verdict}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-400 mb-2">
+                    Source: <span className="text-gray-300 font-semibold">{ti.provider}</span> | Confidence: <span className="text-gray-300">{Math.round(ti.confidence * 100)}%</span>
+                  </div>
+                  {ti.categories && ti.categories.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {ti.categories.map((c: string, cidx: number) => (
+                        <span key={cidx} className="bg-black/50 px-2 py-0.5 rounded text-[10px] text-gray-400">{c}</span>
+                      ))}
+                    </div>
+                  )}
+                  {ti.evidence && ti.evidence.map((ev: string, eidx: number) => (
+                    <div key={eidx} className="text-xs text-gray-400 pl-3 border-l border-white/10">{ev}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-sm italic">No threat intelligence indicators queried.</div>
+          )}
+        </div>
+
+        {/* Evidence Graph Panel */}
+        <div className="glass-panel p-6 md:col-span-2">
           <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Evidence Graph</h2>
           {graph && graph.nodes ? (
             <div className="bg-black/40 rounded-md p-4 min-h-[300px] border border-white/5 font-mono text-sm overflow-x-auto">
@@ -354,6 +500,10 @@ function App() {
                 <FileWarning className="w-4 h-4 text-gray-400" />
                 Threat Reports
               </Link>
+              <Link to="/threat-intel" className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5 transition text-sm font-medium">
+                <Shield className="w-4 h-4 text-gray-400" />
+                Threat Intel
+              </Link>
             </nav>
             <div className="p-6 text-xs text-gray-500">
               Risk-Adaptive Analysis Engine v1.0
@@ -401,6 +551,7 @@ const ThreatReports = () => {
               <Route path="/investigations" element={<div className="p-8">Active Investigations List</div>} />
               <Route path="/investigations/:id" element={<InvestigationDetails />} />
               <Route path="/threat-reports" element={<ThreatReports />} />
+              <Route path="/threat-intel" element={<ThreatIntel />} />
             </Routes>
           </main>
         </div>

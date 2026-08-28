@@ -15,10 +15,10 @@ def get_agents_for_input(input_type: InputType) -> list:
     routes = {
         InputType.URL: [URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
         InputType.EMAIL: [EmailIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
-        InputType.SMS: [SMSIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, PhishingDetectionAgent],
+        InputType.SMS: [SMSIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
         InputType.QR: [QRCodeProcessor, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
-        InputType.WEBPAGE: [URLIntelligenceAgent], # Sandbox is handled implicitly via Orchestrator risk
-        InputType.SOCIAL: [SocialMessageIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, PhishingDetectionAgent]
+        InputType.WEBPAGE: [URLIntelligenceAgent, ThreatIntelligenceAgent], # Sandbox is handled implicitly via Orchestrator risk
+        InputType.SOCIAL: [SocialMessageIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent]
     }
     
     return routes.get(input_type, [])

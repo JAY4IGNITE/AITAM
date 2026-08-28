@@ -2,23 +2,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .base import BaseAgent
 from ..schemas.agent_io import AgentResult
 from ..models.investigation import Investigation
+from ..models.agent import AgentRun
 
 class SMSIntelligenceAgent(BaseAgent):
-    @property
-    def name(self) -> str:
-        return "sms_intelligence"
+    agent_name = "sms_intelligence"
+    agent_version = "1.0.0"
+    capabilities = ["smishing_detection", "otp_fraud_detection"]
         
-    @property
-    def version(self) -> str:
-        return "1.0.0"
-        
-    @property
-    def capabilities(self) -> list[str]:
-        return ["smishing_detection", "otp_fraud_detection"]
-        
-    async def _execute(self, investigation_id: str, session: AsyncSession) -> AgentResult:
+    @classmethod
+    async def _execute(cls, investigation_id: str, session: AsyncSession, run: AgentRun) -> AgentResult:
         inv = await session.get(Investigation, investigation_id)
-        if not inv: return self.build_error_result("Investigation not found")
+        if not inv: 
+            raise ValueError("Investigation not found")
             
         content = inv.normalized_input or inv.target
         findings = []
@@ -33,4 +28,12 @@ class SMSIntelligenceAgent(BaseAgent):
         if "otp" in content_lower or "code" in content_lower:
             findings.append({"title": "OTP Request", "category": "credential_harvesting"})
             
-        return self.build_success_result(findings=findings, evidence={"text": content}, confidence=0.95)
+        return AgentResult(
+            agent_name=cls.agent_name,
+            agent_version=cls.agent_version,
+            status="COMPLETED",
+            execution_time=0.0,
+            findings=findings,
+            evidence=[{"text": content}],
+            confidence=0.95
+        )

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api import investigations, websocket, auth
+from .api import investigations, websocket, auth, threat_intel
 
 app = FastAPI(
     title="ThreatLens API",
@@ -19,6 +19,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(investigations.router, prefix="/api/investigations", tags=["Investigations"])
+app.include_router(threat_intel.router, prefix="/api/threat-intel", tags=["Threat Intel"])
 app.include_router(websocket.router, tags=["WebSockets"])
 
 @app.on_event("startup")
