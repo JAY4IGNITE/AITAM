@@ -6,11 +6,7 @@ from sqlalchemy.future import select
 from ..database.connection import AsyncSessionLocal
 from ..models.investigation import Investigation, InvestigationStatus
 from ..models.event import InvestigationEvent
-from ..agents.url_agent import URLIntelligenceAgent
-from ..agents.content_agent import ContentIntelligenceAgent
-from ..agents.brand_agent import BrandImpersonationAgent
-from ..agents.threat_intel import ThreatIntelligenceAgent
-from ..agents.phishing_agent import PhishingDetectionAgent
+from ..engine.agent_router import AgentRouter
 from ..engine.correlation import FindingCorrelationService
 from ..engine.risk import RiskEngine
 
@@ -41,6 +37,14 @@ class Orchestrator:
                 await session.commit()
                 await Orchestrator.log_event(session, inv.id, "INITIAL_ANALYSIS_STARTED", "Orchestrator")
                 
+                from ..models.journey import RiskAssessment
+                init_risk = await RiskEngine.calculate_risk(inv.id, session)
+                session.add(RiskAssessment(
+                    investigation_id=inv.id, stage="INITIAL", score=init_risk.score,
+                    level=init_risk.level, reasons=[{"finding": r.finding, "contribution": r.contribution} for r in init_risk.reasons]
+                ))
+                await session.commit()
+                
                 # 2. AGENT ANALYSIS
                 inv.status = InvestigationStatus.AGENT_ANALYSIS
                 inv.current_stage = "Running AI Agents"
@@ -53,18 +57,9 @@ class Orchestrator:
                     async with AsyncSessionLocal() as agent_session:
                         return await agent_class.analyze(i_id, agent_session)
                         
-                # Group 1: Base concurrent agents
-                await asyncio.gather(
-                    run_agent(URLIntelligenceAgent, inv.id),
-                    run_agent(ContentIntelligenceAgent, inv.id),
-                    run_agent(BrandImpersonationAgent, inv.id)
-                )
-                
-                # Group 2: Dependent agents
-                await asyncio.gather(
-                    run_agent(PhishingDetectionAgent, inv.id),
-                    run_agent(ThreatIntelligenceAgent, inv.id)
-                )
+                agents_to_run = AgentRouter.get_route(inv.input_type)
+                if agents_to_run:
+                    await asyncio.gather(*[run_agent(ac, inv.id) for ac in agents_to_run])
                 
                 # Group 3: Correlation Service
                 async with AsyncSessionLocal() as corr_session:
@@ -78,6 +73,12 @@ class Orchestrator:
                 risk_output = await RiskEngine.calculate_risk(inv.id, session)
                 inv.initial_risk_score = risk_output.score
                 await Orchestrator.log_event(session, inv.id, "RISK_CALCULATED", "RiskEngine", {"initial_risk": risk_output.score})
+                
+                session.add(RiskAssessment(
+                    investigation_id=inv.id, stage="AGENTS", score=risk_output.score,
+                    level=risk_output.level, reasons=[{"finding": r.finding, "contribution": r.contribution} for r in risk_output.reasons]
+                ))
+                await session.commit()
                 
                 # 4. DECISION (SANDBOX or PROCEED)
                 if risk_output.sandbox_required: 
@@ -94,6 +95,14 @@ class Orchestrator:
                     # Trigger Sandbox
                     from ..agents.sandbox_agent import SandboxAgent
                     await SandboxAgent.analyze(inv.id, session)
+                    
+                    sb_risk = await RiskEngine.calculate_risk(inv.id, session)
+                    session.add(RiskAssessment(
+                        investigation_id=inv.id, stage="SANDBOX", score=sb_risk.score,
+                        level=sb_risk.level, reasons=[{"finding": r.finding, "contribution": r.contribution} for r in sb_risk.reasons]
+                    ))
+                    await session.commit()
+                    
                     inv.status = InvestigationStatus.BEHAVIOR_ANALYSIS
                     inv.current_stage = "Analyzing Browser Behavior"
                     await session.commit()
@@ -152,8 +161,26 @@ class Orchestrator:
                 else:
                     inv.classification = "SAFE"
                     
+                inv.status = InvestigationStatus.COMPLETED
+                inv.current_stage = "Analysis Complete"
+                inv.completed_at = datetime.utcnow()
                 await session.commit()
-                await Orchestrator.log_event(session, inv.id, "INVESTIGATION_COMPLETED", "Orchestrator")
+                
+                # Store Final Risk Assessment
+                from ..models.journey import RiskAssessment
+                session.add(RiskAssessment(
+                    investigation_id=inv.id, stage="FINAL", score=final_risk_output.score,
+                    level=final_risk_output.level, reasons=[{"finding": r.finding, "contribution": r.contribution} for r in final_risk_output.reasons]
+                ))
+                await session.commit()
+                
+                # BUILD EVIDENCE GRAPH & ATTACK JOURNEY
+                from ..engine.graph_builder import EvidenceGraphService
+                from ..engine.journey_builder import AttackJourneyService
+                await EvidenceGraphService.build_graph(inv.id, session)
+                await AttackJourneyService.build_journey(inv.id, session)
+                
+                await Orchestrator.log_event(session, inv.id, "COMPLETED", "Orchestrator")
                 
             except Exception as e:
                 inv.status = InvestigationStatus.FAILED

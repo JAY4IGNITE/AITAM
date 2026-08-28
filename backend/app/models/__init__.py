@@ -7,6 +7,8 @@ from .report import Report, AttackStep
 from .iocs import IOC, Artifact
 from .user import User
 from .alert import Alert, AlertStatus
+from .graph import EvidenceNode, EvidenceEdge
+from .journey import AttackJourneyStep, RiskAssessment
 
 __all__ = [
     "BaseModel",
@@ -18,11 +20,18 @@ __all__ = [
     "AgentStatus",
     "Evidence",
     "SandboxSession",
-    "IOC",
-    "Artifact",
+    "SandboxStatus",
+    "Finding",
+    "InvestigationEvent",
     "Report",
     "AttackStep",
+    "IOC",
+    "Artifact",
     "User",
-    "InvestigationEvent",
-    "Finding"
+    "Alert",
+    "AlertStatus",
+    "EvidenceNode",
+    "EvidenceEdge",
+    "AttackJourneyStep",
+    "RiskAssessment"
 ]

@@ -98,6 +98,24 @@ const InvestigationDetails = () => {
     enabled: !!sandbox && sandbox.status === 'COMPLETED'
   });
 
+  const { data: graph } = useQuery({
+    queryKey: ['graph', id],
+    queryFn: () => fetch(`/api/investigations/${id}/graph`).then(res => res.json()),
+    enabled: inv?.status === 'COMPLETED'
+  });
+
+  const { data: journey } = useQuery({
+    queryKey: ['journey', id],
+    queryFn: () => fetch(`/api/investigations/${id}/journey`).then(res => res.json()),
+    enabled: inv?.status === 'COMPLETED'
+  });
+
+  const { data: explanation } = useQuery({
+    queryKey: ['explanation', id],
+    queryFn: () => fetch(`/api/investigations/${id}/explanation`).then(res => res.json()),
+    enabled: inv?.status === 'COMPLETED'
+  });
+
   if (!inv) return <div className="p-8">Loading investigation...</div>;
 
   const downloadReport = async () => {
@@ -140,26 +158,8 @@ const InvestigationDetails = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Agent Activity Panel */}
-        <div className="glass-panel p-6">
-          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Agent Activity</h2>
-          <div className="space-y-3">
-            {agents?.map((agent: any, idx: number) => (
-              <div key={idx} className="flex justify-between items-center bg-black/30 p-3 rounded-md">
-                <div>
-                  <div className="font-medium">{agent.agent_name}</div>
-                  <div className="text-xs text-gray-400">Duration: {agent.duration ? `${agent.duration}s` : '...'}</div>
-                </div>
-                <div className={`text-sm px-2 py-1 rounded ${agent.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : agent.status === 'RUNNING' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>
-                  {agent.status}
-                </div>
-              </div>
-            ))}
-            {(!agents || agents.length === 0) && <div className="text-gray-500 text-sm">Waiting for agents to start...</div>}
-          </div>
-        </div>
-
-        {/* Risk Profile Panel */}
+        
+        {/* Risk Profile & Explanation Panel */}
         <div className="glass-panel p-6">
           <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Risk Profile</h2>
           {risk ? (
@@ -172,19 +172,101 @@ const InvestigationDetails = () => {
                   {risk.level}
                 </div>
               </div>
-              <h3 className="font-medium mb-2 text-sm text-gray-400">Deterministic Reasons:</h3>
-              <ul className="space-y-2">
-                {risk.reasons.map((r: any, idx: number) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm bg-black/20 p-2 rounded">
-                    <span className="text-green-400 mt-0.5">✓</span>
-                    <span>{r.finding} <span className="text-gray-500">({r.contribution})</span></span>
-                  </li>
-                ))}
-                {risk.reasons.length === 0 && <li className="text-gray-500 text-sm italic">No risk indicators identified yet.</li>}
-              </ul>
+              
+              {explanation && (
+                <div className="mt-4 p-4 bg-black/30 border border-white/5 rounded-md">
+                  <h3 className="font-bold text-lg mb-2">Why is this dangerous?</h3>
+                  <p className="text-gray-300 text-sm mb-4">{explanation.summary}</p>
+                  <h4 className="font-medium text-xs text-gray-400 mb-2">EVIDENCE:</h4>
+                  <ul className="space-y-1">
+                    {explanation.evidence.map((ev: string, idx: number) => (
+                      <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
+                        <span className="text-primary">{ev.startsWith('✓') ? ev : `✓ ${ev}`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {explanation.sandbox_confirmation && (
+                    <div className="mt-4 text-xs font-bold text-red-400 bg-red-500/10 inline-block px-2 py-1 rounded">
+                      SANDBOX CONFIRMATION: YES
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {!explanation && (
+                <>
+                  <h3 className="font-medium mb-2 text-sm text-gray-400">Deterministic Reasons:</h3>
+                  <ul className="space-y-2">
+                    {risk.reasons.map((r: any, idx: number) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm bg-black/20 p-2 rounded">
+                        <span className="text-green-400 mt-0.5">✓</span>
+                        <span>{r.finding} <span className="text-gray-500">({r.contribution})</span></span>
+                      </li>
+                    ))}
+                    {risk.reasons.length === 0 && <li className="text-gray-500 text-sm italic">No risk indicators identified yet.</li>}
+                  </ul>
+                </>
+              )}
             </div>
           ) : (
             <div className="text-gray-500 text-sm">Calculating risk...</div>
+          )}
+        </div>
+
+        {/* Attack Journey Panel */}
+        <div className="glass-panel p-6">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Attack Journey</h2>
+          {journey && journey.length > 0 ? (
+            <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+              {journey.map((step: any, idx: number) => (
+                <div key={idx} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="w-6 h-6 rounded-full bg-primary/20 text-primary flex items-center justify-center text-xs font-bold border border-primary/50">
+                      {step.sequence}
+                    </div>
+                    {idx < journey.length - 1 && <div className="w-px h-full bg-white/10 my-1"></div>}
+                  </div>
+                  <div className="pb-4">
+                    <h3 className="font-semibold text-sm">{step.title}</h3>
+                    <p className="text-xs text-gray-400 mt-1">{step.description}</p>
+                    {step.risk_after > step.risk_before && (
+                      <div className="text-xs mt-2 text-red-400 bg-red-500/10 inline-block px-2 py-1 rounded">
+                        Risk Increased: {step.risk_before} → {step.risk_after}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-sm italic">Analysis must complete before journey generation.</div>
+          )}
+        </div>
+
+        {/* Evidence Graph Panel */}
+        <div className="glass-panel p-6 md:col-span-2">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Evidence Graph</h2>
+          {graph && graph.nodes ? (
+            <div className="bg-black/40 rounded-md p-4 min-h-[300px] border border-white/5 font-mono text-sm overflow-x-auto">
+              <div className="text-gray-400 mb-4">Relational Node Matrix (Simplified View)</div>
+              {graph.edges.map((e: any, idx: number) => {
+                const src = graph.nodes.find((n: any) => n.id === e.source_node_id);
+                const tgt = graph.nodes.find((n: any) => n.id === e.target_node_id);
+                if (!src || !tgt) return null;
+                return (
+                  <div key={idx} className="mb-2 flex items-center gap-3">
+                    <span className="text-blue-400">[{src.node_type}]</span>
+                    <span className="text-gray-300">{src.safe_display_value}</span>
+                    <span className="text-gray-500">──({e.relationship_type.toLowerCase()})──→</span>
+                    <span className="text-orange-400">[{tgt.node_type}]</span>
+                    <span className="text-gray-300">{tgt.safe_display_value}</span>
+                  </div>
+                );
+              })}
+              {graph.edges.length === 0 && <div className="text-gray-500">No relationships mapped.</div>}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-sm italic">Graph generates upon investigation completion.</div>
           )}
         </div>
         

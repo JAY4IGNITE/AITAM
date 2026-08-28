@@ -184,3 +184,30 @@ async def get_active_alerts(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Alert).order_by(Alert.created_at.desc()).limit(20))
     alerts = result.scalars().all()
     return alerts
+
+@router.get("/{id}/graph")
+async def get_graph(id: str, db: AsyncSession = Depends(get_db)):
+    from ..models.graph import EvidenceNode, EvidenceEdge
+    nodes_res = await db.execute(select(EvidenceNode).where(EvidenceNode.investigation_id == id))
+    edges_res = await db.execute(select(EvidenceEdge).where(EvidenceEdge.investigation_id == id))
+    return {
+        "nodes": nodes_res.scalars().all(),
+        "edges": edges_res.scalars().all()
+    }
+
+@router.get("/{id}/journey")
+async def get_journey(id: str, db: AsyncSession = Depends(get_db)):
+    from ..models.journey import AttackJourneyStep
+    res = await db.execute(select(AttackJourneyStep).where(AttackJourneyStep.investigation_id == id).order_by(AttackJourneyStep.sequence.asc()))
+    return res.scalars().all()
+
+@router.get("/{id}/risk/history")
+async def get_risk_history(id: str, db: AsyncSession = Depends(get_db)):
+    from ..models.journey import RiskAssessment
+    res = await db.execute(select(RiskAssessment).where(RiskAssessment.investigation_id == id).order_by(RiskAssessment.created_at.asc()))
+    return res.scalars().all()
+
+@router.get("/{id}/explanation")
+async def get_explanation(id: str, db: AsyncSession = Depends(get_db)):
+    from ..engine.explanation import RiskExplanationService
+    return await RiskExplanationService.generate_explanation(id, db)
