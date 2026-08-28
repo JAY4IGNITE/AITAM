@@ -9,6 +9,7 @@ from .user import User
 from .alert import Alert, AlertStatus
 from .graph import EvidenceNode, EvidenceEdge
 from .journey import AttackJourneyStep, RiskAssessment
+from .autonomous import TriageResult, InvestigationPlan, ResponseAction
 
 __all__ = [
     "BaseModel",

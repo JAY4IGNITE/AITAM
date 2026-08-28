@@ -242,6 +242,30 @@ async def get_investigation_threat_intel(id: str, db: AsyncSession = Depends(get
                 
     return all_results
 
+@router.get("/{id}/autonomous")
+async def get_investigation_autonomous(id: str, db: AsyncSession = Depends(get_db)):
+    from ..models.autonomous import TriageResult, InvestigationPlan, ResponseAction
+    
+    triage = (await db.execute(select(TriageResult).filter_by(investigation_id=id))).scalar_one_or_none()
+    plan = (await db.execute(select(InvestigationPlan).filter_by(investigation_id=id))).scalar_one_or_none()
+    response = (await db.execute(select(ResponseAction).filter_by(investigation_id=id))).scalar_one_or_none()
+    
+    return {
+        "triage": {
+            "priority": triage.priority,
+            "reason": triage.reason
+        } if triage else None,
+        "plan": {
+            "planned_agents": plan.planned_agents,
+            "reason": plan.reason
+        } if plan else None,
+        "response": {
+            "action": response.action_type,
+            "details": response.details,
+            "confidence": response.confidence
+        } if response else None
+    }
+
 class AnalyzeRequest(BaseModel):
     input_type: str
     content: str

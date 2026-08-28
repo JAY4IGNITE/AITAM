@@ -6,6 +6,7 @@ from sqlalchemy.future import select
 from ..database.connection import AsyncSessionLocal
 from ..models.investigation import Investigation, InvestigationStatus
 from ..models.event import InvestigationEvent
+from ..models.autonomous import TriageResult, InvestigationPlan
 from ..engine.agent_router import AgentRouter
 from ..engine.correlation import FindingCorrelationService
 from ..engine.risk import RiskEngine
@@ -24,7 +25,6 @@ class Orchestrator:
 
     @staticmethod
     async def start_investigation(investigation_id: str):
-        # We run this in a background task
         async with AsyncSessionLocal() as session:
             inv = await session.get(Investigation, investigation_id)
             if not inv:
@@ -50,29 +50,79 @@ class Orchestrator:
                 ))
                 await session.commit()
                 
-                # 2. AGENT ANALYSIS
-                inv.status = InvestigationStatus.AGENT_ANALYSIS
-                inv.current_stage = "Running AI Agents"
+                # 2. AUTONOMOUS TRIAGE
+                inv.current_stage = "Autonomous Triage"
                 await session.commit()
-                await Orchestrator.log_event(session, inv.id, "AGENT_ANALYSIS_STARTED", "Orchestrator")
                 
-                # Phase 3 Dependency Graph
-                # Helper to run an agent with its own session to avoid concurrent session usage
-                async def run_agent(agent_class, i_id):
-                    async with AsyncSessionLocal() as agent_session:
-                        return await agent_class.analyze(i_id, agent_session)
+                from ..agents.triage_agent import TriageAgent
+                await TriageAgent.analyze(inv.id, session)
+                
+                # Get Triage Result
+                triage = (await session.execute(select(TriageResult).where(TriageResult.investigation_id == inv.id))).scalar_one_or_none()
+                is_high_priority = triage and triage.priority == "HIGH"
+                
+                if is_high_priority:
+                    # 3. INVESTIGATION PLANNER
+                    inv.current_stage = "Investigation Planning"
+                    await session.commit()
+                    
+                    from ..agents.investigation_planner import InvestigationPlannerAgent
+                    await InvestigationPlannerAgent.analyze(inv.id, session)
+                    
+                    plan = (await session.execute(select(InvestigationPlan).where(InvestigationPlan.investigation_id == inv.id))).scalar_one_or_none()
+                    
+                    inv.status = InvestigationStatus.AGENT_ANALYSIS
+                    inv.current_stage = "Running AI Agents"
+                    await session.commit()
+                    await Orchestrator.log_event(session, inv.id, "AGENT_ANALYSIS_STARTED", "Orchestrator")
+                    
+                    # Dynamically map strings to Agent Classes
+                    import sys
+                    from importlib import import_module
+                    # Instead of complex reflection, we can fetch all subclasses of BaseAgent
+                    from ..agents.base import BaseAgent
+                    # Ensure modules are loaded
+                    from ..agents.url_agent import URLIntelligenceAgent
+                    from ..agents.content_agent import ContentIntelligenceAgent
+                    from ..agents.brand_agent import BrandImpersonationAgent
+                    from ..agents.threat_intel import ThreatIntelligenceAgent
+                    from ..agents.phishing_agent import PhishingDetectionAgent
+                    from ..agents.email_agent import EmailIntelligenceAgent
+                    from ..agents.sms_agent import SMSIntelligenceAgent
+                    from ..agents.social_agent import SocialMessageIntelligenceAgent
+                    
+                    agent_classes = {cls.__name__: cls for cls in BaseAgent.__subclasses__()}
+                    
+                    agents_to_run = []
+                    if plan and plan.planned_agents:
+                        for a_name in plan.planned_agents:
+                            if a_name in agent_classes:
+                                agents_to_run.append(agent_classes[a_name])
+                    
+                    if not agents_to_run: # Fallback
+                        agents_to_run = AgentRouter.get_route(inv.input_type)
                         
-                agents_to_run = AgentRouter.get_route(inv.input_type)
-                if agents_to_run:
-                    await asyncio.gather(*[run_agent(ac, inv.id) for ac in agents_to_run])
+                    async def run_agent(agent_class, i_id):
+                        async with AsyncSessionLocal() as agent_session:
+                            return await agent_class.analyze(i_id, agent_session)
+                            
+                    if agents_to_run:
+                        await asyncio.gather(*[run_agent(ac, inv.id) for ac in agents_to_run])
+                        
+                else:
+                    await Orchestrator.log_event(session, inv.id, "TRIAGE_SKIPPED_AGENTS", "Orchestrator", {"reason": triage.reason if triage else "LOW PRIORITY"})
+                    
+                # 4. EVIDENCE CORRELATION
+                inv.status = InvestigationStatus.EVIDENCE_CORRELATION
+                inv.current_stage = "Correlating Evidence"
+                await session.commit()
                 
-                # Group 3: Correlation Service
                 async with AsyncSessionLocal() as corr_session:
                     await FindingCorrelationService.correlate(inv.id, corr_session)
                 
-                # 3. RISK EVALUATION
+                # 5. RISK EVALUATION
                 inv.status = InvestigationStatus.RISK_EVALUATION
-                inv.current_stage = "Calculating Initial Risk"
+                inv.current_stage = "Calculating Risk"
                 await session.commit()
                 
                 risk_output = await RiskEngine.calculate_risk(inv.id, session)
@@ -85,19 +135,17 @@ class Orchestrator:
                 ))
                 await session.commit()
                 
-                # 4. DECISION (SANDBOX or PROCEED)
-                if risk_output.sandbox_required: 
+                # 6. DECISION (SANDBOX or PROCEED) - ONLY if HIGH PRIORITY
+                if is_high_priority and risk_output.sandbox_required: 
                     inv.status = InvestigationStatus.SANDBOX_QUEUED
                     inv.current_stage = "Queuing for Sandbox"
                     await session.commit()
-                    await Orchestrator.log_event(session, inv.id, "SANDBOX_QUEUED", "Orchestrator")
                     
                     inv.status = InvestigationStatus.SANDBOX_RUNNING
                     inv.current_stage = "Isolating in Sandbox"
                     await session.commit()
                     await Orchestrator.log_event(session, inv.id, "SANDBOX_STARTED", "SandboxAgent")
                     
-                    # Trigger Sandbox
                     from ..agents.sandbox_agent import SandboxAgent
                     await SandboxAgent.analyze(inv.id, session)
                     
@@ -115,18 +163,13 @@ class Orchestrator:
                     from ..agents.behavior_agent import BehaviorAnalysisAgent
                     await BehaviorAnalysisAgent.analyze(inv.id, session)
                     
-                    await Orchestrator.log_event(session, inv.id, "BEHAVIOR_ANALYSIS_COMPLETED", "BehaviorAnalysisAgent")
-                    
-                    # 5. RE_EVALUATION
                     inv.status = InvestigationStatus.RE_EVALUATION
                     inv.current_stage = "Re-evaluating Risk"
                     await session.commit()
                     
                     final_risk_output = await RiskEngine.calculate_risk(inv.id, session)
                     inv.final_risk_score = final_risk_output.score
-                    await Orchestrator.log_event(session, inv.id, "RISK_RECALCULATED", "RiskEngine", {"final_risk": final_risk_output.score})
                     
-                    # 6. ESCALATION (Phase 5)
                     from ..engine.escalation import EscalationEngine
                     await EscalationEngine.evaluate_and_escalate(inv.id, session)
                     
@@ -139,23 +182,31 @@ class Orchestrator:
                     inv.final_risk_score = risk_output.score
                     final_risk_output = risk_output
                     
-                # 6. EVIDENCE CORRELATION
-                inv.status = InvestigationStatus.EVIDENCE_CORRELATION
-                inv.current_stage = "Correlating Evidence"
+                # Store Final Risk Assessment
+                session.add(RiskAssessment(
+                    investigation_id=inv.id, stage="FINAL", score=final_risk_output.score,
+                    level=final_risk_output.level, reasons=[{"finding": r.finding, "contribution": r.contribution} for r in final_risk_output.reasons]
+                ))
                 await session.commit()
-                await Orchestrator.log_event(session, inv.id, "EVIDENCE_CORRELATION_STARTED", "Orchestrator")
                 
-                # 7. REPORT GENERATION
+                # 7. RESPONSE AGENT
+                inv.current_stage = "Automated Mitigation Response"
+                await session.commit()
+                
+                from ..agents.response_agent import ResponseAgent
+                await ResponseAgent.analyze(inv.id, session)
+                
+                # 8. GRAPHS AND REPORTS
+                from ..engine.graph_builder import EvidenceGraphService
+                from ..engine.journey_builder import AttackJourneyService
+                await EvidenceGraphService.build_graph(inv.id, session)
+                await AttackJourneyService.build_journey(inv.id, session)
+                
                 inv.status = InvestigationStatus.REPORT_GENERATION
                 inv.current_stage = "Generating Intelligence Report"
                 await session.commit()
-                await Orchestrator.log_event(session, inv.id, "REPORT_GENERATED", "Orchestrator")
                 
                 # FINAL COMPLETED STATE
-                inv.status = InvestigationStatus.COMPLETED
-                inv.current_stage = "Analysis Complete"
-                inv.completed_at = datetime.utcnow()
-                
                 if inv.final_risk_score > 80:
                     inv.classification = "CRITICAL"
                 elif inv.final_risk_score > 60:
@@ -172,23 +223,11 @@ class Orchestrator:
                 inv.completed_at = datetime.utcnow()
                 await session.commit()
                 
-                # Store Final Risk Assessment
-                from ..models.journey import RiskAssessment
-                session.add(RiskAssessment(
-                    investigation_id=inv.id, stage="FINAL", score=final_risk_output.score,
-                    level=final_risk_output.level, reasons=[{"finding": r.finding, "contribution": r.contribution} for r in final_risk_output.reasons]
-                ))
-                await session.commit()
-                
-                # BUILD EVIDENCE GRAPH & ATTACK JOURNEY
-                from ..engine.graph_builder import EvidenceGraphService
-                from ..engine.journey_builder import AttackJourneyService
-                await EvidenceGraphService.build_graph(inv.id, session)
-                await AttackJourneyService.build_journey(inv.id, session)
-                
                 await Orchestrator.log_event(session, inv.id, "COMPLETED", "Orchestrator")
                 
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 inv.status = InvestigationStatus.FAILED
                 inv.current_stage = "Error"
                 inv.completed_at = datetime.utcnow()

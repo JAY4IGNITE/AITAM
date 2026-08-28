@@ -223,6 +223,12 @@ const InvestigationDetails = () => {
     enabled: inv?.status === 'COMPLETED'
   });
 
+  const { data: autonomous } = useQuery({
+    queryKey: ['autonomous', id],
+    queryFn: () => fetch(`/api/investigations/${id}/autonomous`).then(res => res.json()),
+    enabled: !!inv
+  });
+
   if (!inv) return <div className="p-8">Loading investigation...</div>;
 
   const downloadReport = async () => {
@@ -243,31 +249,81 @@ const InvestigationDetails = () => {
 
   return (
     <div className="p-8 space-y-6">
-      <div className="flex justify-between items-end">
+      <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-3xl font-bold">{inv.display_id}</h1>
-          <p className="text-gray-400 mt-1">Status: {inv.status} | Stage: {inv.current_stage}</p>
-        </div>
-        <div className="text-right flex items-center gap-4">
-          {inv.status === 'COMPLETED' && (
-            <button 
-              onClick={downloadReport}
-              className="bg-primary/20 text-primary border border-primary/50 px-4 py-2 rounded-md font-semibold hover:bg-primary hover:text-white transition text-sm"
-            >
-              Download Report
-            </button>
-          )}
-          <div>
-            <div className="text-sm text-gray-400">Overall Progress</div>
-            <div className="text-2xl font-bold">{inv.progress}%</div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold">{inv.display_id}</h1>
+            {autonomous?.triage && (
+              <span className={`px-2 py-1 text-xs font-bold rounded ${autonomous.triage.priority === 'HIGH' ? 'bg-red-500 text-white' : 'bg-gray-500 text-white'}`}>
+                {autonomous.triage.priority} PRIORITY
+              </span>
+            )}
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+              inv.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' :
+              inv.status === 'FAILED' ? 'bg-red-500/20 text-red-400' :
+              'bg-blue-500/20 text-blue-400 animate-pulse'
+            }`}>
+              {inv.status}
+            </span>
           </div>
+          <p className="text-gray-400 font-mono mt-2">{inv.current_stage}</p>
+        </div>
+        
+        <div className="flex gap-3">
+          {autonomous?.response && (
+            <div className={`px-4 py-2 rounded font-bold border flex items-center gap-2 ${
+              autonomous.response.action === 'BLOCK' ? 'bg-red-500/20 border-red-500/50 text-red-400' :
+              autonomous.response.action === 'EDUCATE' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' :
+              'bg-blue-500/20 border-blue-500/50 text-blue-400'
+            }`}>
+              {autonomous.response.action === 'BLOCK' && <AlertTriangle className="w-4 h-4" />}
+              {autonomous.response.action === 'EDUCATE' && <Shield className="w-4 h-4" />}
+              {autonomous.response.action === 'REPORT' && <FileWarning className="w-4 h-4" />}
+              ACTION: {autonomous.response.action}
+            </div>
+          )}
+          <button 
+            onClick={downloadReport}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition disabled:opacity-50"
+            disabled={inv.status !== 'COMPLETED'}
+          >
+            <Download className="w-4 h-4" /> Export Report
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
-        {/* Risk Profile & Explanation Panel */}
-        <div className="glass-panel p-6">
+        <div className="glass-panel p-6 space-y-6">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Analysis Details</h2>
+          
+          {autonomous?.response && (
+            <div className="bg-black/50 border border-white/5 rounded-md p-4 mb-4">
+              <h3 className="text-sm text-gray-400 mb-1">Automated Response Decision</h3>
+              <p className="font-medium text-gray-200">{autonomous.response.details}</p>
+              <div className="text-xs text-gray-500 mt-2">Confidence: {Math.round(autonomous.response.confidence * 100)}%</div>
+            </div>
+          )}
+
+          <div>
+            <h3 className="text-sm text-gray-400 mb-1">Target</h3>
+            <p className="font-mono text-sm break-all bg-black/30 p-2 rounded">{inv.target}</p>
+          </div>
+          
+          {autonomous?.plan && (
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <h3 className="text-sm text-gray-400 mb-2">Dynamic Investigation Plan</h3>
+              <p className="text-xs text-gray-500 mb-3">{autonomous.plan.reason}</p>
+              <div className="flex flex-wrap gap-2">
+                {autonomous.plan.planned_agents.map((ag: string, idx: number) => (
+                  <span key={idx} className="bg-primary/20 text-primary px-2 py-1 rounded text-xs">
+                    {ag.replace('Agent', '').replace('Intelligence', '')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Risk Profile</h2>
           {risk ? (
             <div>
