@@ -20,7 +20,11 @@ export const IncidentDetails = () => {
   });
 
   const approveMutation = useMutation({
-    mutationFn: (actionId: string) => fetch(`/api/incidents/${id}/actions/${actionId}/approve`, { method: 'POST' }),
+    mutationFn: (actionId: string) => fetch(`/api/incidents/${id}/approve-action`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_id: actionId, analyst_id: 'soc_admin' })
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['incident-actions', id] });
       setApproving(false);
