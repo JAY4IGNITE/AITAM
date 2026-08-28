@@ -9,7 +9,9 @@ import {
   Settings,
   AlertTriangle,
   GlobeLock,
-  LineChart
+  LineChart,
+  Database,
+  FileText
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -21,6 +23,7 @@ export const Sidebar = () => {
     { name: 'Active Cases', path: '/investigations', icon: Activity },
     { name: 'SOC Incidents', path: '/incidents', icon: AlertTriangle, highlight: true },
     { name: 'Threat Intel', path: '/threat-intel', icon: GlobeLock },
+    { name: 'Datasets', path: '/datasets', icon: Database },
     { name: 'Reports', path: '/reports', icon: FileWarning },
     { name: 'Analytics', path: '/analytics', icon: LineChart },
   ];
