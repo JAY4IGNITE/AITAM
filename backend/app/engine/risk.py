@@ -1,31 +1,52 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from ..models.agent import Evidence
+from typing import Dict, Any, List
+from ..models.finding import Finding
+from ..schemas.agent_io import RiskOutput, RiskReason
 
 class RiskEngine:
     @staticmethod
-    async def calculate_risk(investigation_id: str, session: AsyncSession) -> float:
-        # Base risk
-        base_risk = 0.0
-        
-        # Get all evidence
+    async def calculate_risk(investigation_id: str, session: AsyncSession) -> RiskOutput:
+        # Get all findings
         result = await session.execute(
-            select(Evidence).where(Evidence.investigation_id == investigation_id)
+            select(Finding).where(Finding.investigation_id == investigation_id)
         )
-        evidence_list = result.scalars().all()
+        findings: List[Finding] = result.scalars().all()
         
-        for ev in evidence_list:
-            weight = 0
-            if ev.severity == "critical":
-                weight = 80
-            elif ev.severity == "high":
-                weight = 50
-            elif ev.severity == "medium":
-                weight = 30
-            elif ev.severity == "low":
-                weight = 10
-                
-            base_risk += weight * ev.confidence
+        total_score = 0.0
+        reasons = []
+        
+        # Deduplicate findings by title so we don't double count identical evidence
+        seen_titles = set()
+        
+        for f in findings:
+            if f.title not in seen_titles:
+                seen_titles.add(f.title)
+                contribution = float(f.risk_contribution) * f.confidence
+                total_score += contribution
+                if contribution > 0:
+                    reasons.append(RiskReason(finding=f.title, contribution=round(contribution, 1)))
             
-        final_score = min(100.0, base_risk)
-        return float(final_score)
+        final_score = min(100.0, total_score)
+        
+        level = "SAFE"
+        if final_score > 79:
+            level = "CRITICAL"
+        elif final_score > 59:
+            level = "HIGH"
+        elif final_score > 29:
+            level = "MEDIUM"
+        else:
+            level = "LOW"
+            
+        sandbox_req = final_score > 40
+        deep_req = final_score > 80
+            
+        # Return structured RiskOutput directly
+        return RiskOutput(
+            score=round(final_score, 1),
+            level=level,
+            reasons=reasons,
+            sandbox_required=sandbox_req,
+            deep_analysis_required=deep_req
+        )

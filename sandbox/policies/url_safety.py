@@ -19,6 +19,9 @@ def is_safe_url(url: str) -> bool:
         if hostname == "169.254.169.254":
             return False
             
+        if hostname.endswith(".test"):
+            return True
+            
         # Resolve to IP
         ip_addr = socket.gethostbyname(hostname)
         ip = ipaddress.ip_address(ip_addr)

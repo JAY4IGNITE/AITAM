@@ -6,7 +6,7 @@ from .base import BaseAgent
 from ..models.agent import AgentRun, Evidence
 from ..models.finding import Finding
 from ..models.investigation import Investigation
-from ..schemas.agent_io import AgentOutput, Signal
+from ..schemas.agent_io import AgentResult, Signal
 
 class URLIntelligenceAgent(BaseAgent):
     agent_name = "url_intelligence"
@@ -126,24 +126,15 @@ class URLIntelligenceAgent(BaseAgent):
         total_risk = min(100, sum(f.risk_contribution for f in findings))
         signals = [Signal(type=f.category, severity=f.severity, evidence=f.title) for f in findings]
         
-        output = AgentOutput(
+        # Return structured AgentResult
+        result = AgentResult(
             agent_name=cls.agent_name,
-            risk_score=float(total_risk),
+            agent_version=cls.agent_version,
+            status="RUNNING", # will be overwritten by BaseAgent
+            execution_time=0.0,
+            findings=[{"title": f.title, "severity": f.severity, "category": f.category} for f in findings],
+            evidence=[{"type": sig.type, "fact": sig.evidence} for sig in signals],
             confidence=0.95,
-            signals=signals
+            metadata={"url": url, "normalized_url": inv.normalized_input}
         )
-            
-        run.outputs = output.dict()
-        run.confidence = output.confidence
-        
-        # Save legacy evidence (for backwards compatibility)
-        for sig in signals:
-            ev = Evidence(
-                investigation_id=investigation_id,
-                agent_name=cls.agent_name,
-                evidence_type=sig.type,
-                severity=sig.severity,
-                observed_fact=sig.evidence,
-                confidence=output.confidence
-            )
-            session.add(ev)
+        return result

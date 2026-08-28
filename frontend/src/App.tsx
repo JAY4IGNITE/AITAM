@@ -54,6 +54,168 @@ const Investigate = () => {
   );
 };
 
+import { useQuery } from '@tanstack/react-query';
+import { useParams } from 'react-router-dom';
+
+const InvestigationDetails = () => {
+  const { id } = useParams();
+  
+  const { data: inv } = useQuery({
+    queryKey: ['investigation', id],
+    queryFn: () => fetch(`/api/investigations/${id}`).then(res => res.json()),
+    refetchInterval: (data) => (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 2000
+  });
+
+  const { data: agents } = useQuery({
+    queryKey: ['agents', id],
+    queryFn: () => fetch(`/api/investigations/${id}/agents`).then(res => res.json()),
+    refetchInterval: 2000
+  });
+
+  const { data: risk } = useQuery({
+    queryKey: ['risk', id],
+    queryFn: () => fetch(`/api/investigations/${id}/risk`).then(res => res.json()),
+    refetchInterval: 2000
+  });
+
+  const { data: sandbox } = useQuery({
+    queryKey: ['sandbox', id],
+    queryFn: () => fetch(`/api/investigations/${id}/sandbox`).then(res => res.json()),
+    refetchInterval: (data) => (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 2000
+  });
+
+  const { data: sandboxEvents } = useQuery({
+    queryKey: ['sandboxEvents', id],
+    queryFn: () => fetch(`/api/investigations/${id}/sandbox/events`).then(res => res.json()),
+    refetchInterval: 2000,
+    enabled: !!sandbox && sandbox.status !== 'NOT_STARTED'
+  });
+
+  const { data: sandboxArtifacts } = useQuery({
+    queryKey: ['sandboxArtifacts', id],
+    queryFn: () => fetch(`/api/investigations/${id}/sandbox/artifacts`).then(res => res.json()),
+    refetchInterval: 5000,
+    enabled: !!sandbox && sandbox.status === 'COMPLETED'
+  });
+
+  if (!inv) return <div className="p-8">Loading investigation...</div>;
+
+  return (
+    <div className="p-8 space-y-6">
+      <div className="flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold">{inv.display_id}</h1>
+          <p className="text-gray-400 mt-1">Status: {inv.status} | Stage: {inv.current_stage}</p>
+        </div>
+        <div className="text-right">
+          <div className="text-sm text-gray-400">Overall Progress</div>
+          <div className="text-2xl font-bold">{inv.progress}%</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Agent Activity Panel */}
+        <div className="glass-panel p-6">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Agent Activity</h2>
+          <div className="space-y-3">
+            {agents?.map((agent: any, idx: number) => (
+              <div key={idx} className="flex justify-between items-center bg-black/30 p-3 rounded-md">
+                <div>
+                  <div className="font-medium">{agent.agent_name}</div>
+                  <div className="text-xs text-gray-400">Duration: {agent.duration ? `${agent.duration}s` : '...'}</div>
+                </div>
+                <div className={`text-sm px-2 py-1 rounded ${agent.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : agent.status === 'RUNNING' ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                  {agent.status}
+                </div>
+              </div>
+            ))}
+            {(!agents || agents.length === 0) && <div className="text-gray-500 text-sm">Waiting for agents to start...</div>}
+          </div>
+        </div>
+
+        {/* Risk Profile Panel */}
+        <div className="glass-panel p-6">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Risk Profile</h2>
+          {risk ? (
+            <div>
+              <div className="flex items-center gap-4 mb-6">
+                <div className={`text-4xl font-bold ${risk.level === 'CRITICAL' ? 'text-red-500' : risk.level === 'HIGH' ? 'text-orange-500' : risk.level === 'MEDIUM' ? 'text-yellow-500' : 'text-green-500'}`}>
+                  {risk.score}
+                </div>
+                <div className="text-lg uppercase font-semibold text-gray-300">
+                  {risk.level}
+                </div>
+              </div>
+              <h3 className="font-medium mb-2 text-sm text-gray-400">Deterministic Reasons:</h3>
+              <ul className="space-y-2">
+                {risk.reasons.map((r: any, idx: number) => (
+                  <li key={idx} className="flex items-start gap-2 text-sm bg-black/20 p-2 rounded">
+                    <span className="text-green-400 mt-0.5">✓</span>
+                    <span>{r.finding} <span className="text-gray-500">({r.contribution})</span></span>
+                  </li>
+                ))}
+                {risk.reasons.length === 0 && <li className="text-gray-500 text-sm italic">No risk indicators identified yet.</li>}
+              </ul>
+            </div>
+          ) : (
+            <div className="text-gray-500 text-sm">Calculating risk...</div>
+          )}
+        </div>
+        
+        {/* Sandbox Analysis Panel */}
+        <div className="glass-panel p-6 md:col-span-2">
+          <h2 className="text-xl font-semibold mb-4 border-b border-white/10 pb-2">Sandbox Dynamic Analysis</h2>
+          {sandbox && sandbox.status !== 'NOT_STARTED' ? (
+            <div className="space-y-4">
+              <div className="flex gap-6 items-center">
+                <div className={`px-3 py-1 rounded text-sm font-medium ${sandbox.status === 'COMPLETED' ? 'bg-green-500/20 text-green-400' : sandbox.status === 'FAILED' || sandbox.status === 'TIMEOUT' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                  Status: {sandbox.status}
+                </div>
+                <div className="text-sm text-gray-400">Events Captured: {sandbox.event_count || 0}</div>
+              </div>
+              
+              {sandboxEvents && sandboxEvents.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <h3 className="font-medium text-sm text-gray-400 mb-2">Event Log:</h3>
+                    <div className="bg-black/40 rounded-md p-3 h-64 overflow-y-auto space-y-2 border border-white/5">
+                      {sandboxEvents.map((ev: any, idx: number) => (
+                        <div key={idx} className="text-xs flex gap-2 border-b border-white/5 pb-1">
+                          <span className="text-gray-500 min-w-[70px]">{new Date(ev.timestamp * 1000).toLocaleTimeString()}</span>
+                          <span className={`font-semibold ${ev.severity === 'CRITICAL' ? 'text-red-500' : ev.severity === 'HIGH' ? 'text-orange-400' : ev.severity === 'WARNING' ? 'text-yellow-400' : 'text-blue-400'}`}>{ev.event_type}</span>
+                          <span className="text-gray-300 truncate">{JSON.stringify(ev.metadata)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h3 className="font-medium text-sm text-gray-400 mb-2">Artifacts:</h3>
+                    {sandboxArtifacts?.final ? (
+                      <div className="rounded overflow-hidden border border-white/10 relative group">
+                        <img src={`data:image/jpeg;base64,${sandboxArtifacts.final}`} alt="Sandbox Screenshot" className="w-full h-auto opacity-80 group-hover:opacity-100 transition" />
+                        <div className="absolute bottom-2 right-2 bg-black/80 px-2 py-1 rounded text-xs">Final DOM Render</div>
+                      </div>
+                    ) : (
+                      <div className="h-64 bg-black/20 rounded flex items-center justify-center text-sm text-gray-500 border border-white/5 border-dashed">
+                        No screenshot available
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500 italic">Waiting for sandbox events...</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500">Sandbox not triggered for this investigation (Risk too low or still processing).</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const queryClient = new QueryClient();
 
 function App() {
@@ -96,7 +258,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/investigate" element={<Investigate />} />
               <Route path="/investigations" element={<div className="p-8">Active Investigations List</div>} />
-              <Route path="/investigations/:id" element={<div className="p-8">Investigation Details</div>} />
+              <Route path="/investigations/:id" element={<InvestigationDetails />} />
               <Route path="/threat-reports" element={<div className="p-8">Threat Reports</div>} />
             </Routes>
           </main>

@@ -4,7 +4,7 @@ from celery import Celery
 from urllib.parse import urlparse
 import logging
 from .playwright_script import run_sandbox_analysis
-from ..policies.url_safety import is_safe_url
+from policies.url_safety import is_safe_url
 
 # Configure Celery
 redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
@@ -38,7 +38,7 @@ def analyze_url_task(self, investigation_id: str, url: str):
             "investigation_id": investigation_id,
             "status": "failed",
             "error": "URL violates safety policy (SSRF prevention)",
-            "signals": []
+            "events": []
         }
     
     # 2. Run Playwright (Synchronous wrapper around Async Playwright)
@@ -54,5 +54,5 @@ def analyze_url_task(self, investigation_id: str, url: str):
             "investigation_id": investigation_id,
             "status": "failed",
             "error": str(e),
-            "signals": []
+            "events": []
         }
