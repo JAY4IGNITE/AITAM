@@ -34,6 +34,11 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=${JWT_SECRET:-super-secret-key-for-development}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+      - URLHAUS_API_KEY=${URLHAUS_API_KEY:-}
+      - URLHAUS_AUTH_KEY=${URLHAUS_AUTH_KEY:-}
+      - GOOGLE_SAFE_BROWSING_API_KEY=${GOOGLE_SAFE_BROWSING_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
