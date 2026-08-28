@@ -30,6 +30,9 @@ class ThreatIntelligenceAgent(BaseAgent):
 
     @classmethod
     async def _execute(cls, investigation_id: str, session: AsyncSession, run: AgentRun) -> AgentResult:
+        from ..models.iocs import IOC
+        from datetime import datetime
+        
         inv = await session.get(Investigation, investigation_id)
         if not inv.normalized_input:
             return AgentResult(agent_name=cls.agent_name, agent_version=cls.agent_version, status="SKIPPED", execution_time=0.0)
@@ -40,6 +43,7 @@ class ThreatIntelligenceAgent(BaseAgent):
         
         findings = []
         evidence = []
+        iocs_to_save = []
         
         if status in ["malicious", "suspicious"]:
             severity = "critical" if status == "malicious" else "high"
@@ -54,7 +58,19 @@ class ThreatIntelligenceAgent(BaseAgent):
             findings.append(f)
             evidence.append({"type": "THREAT_INTEL", "fact": evidence_str})
             
+            # Save IOC
+            iocs_to_save.append(IOC(
+                investigation_id=investigation_id,
+                ioc_type="DOMAIN",
+                value=hostname,
+                source_agent=cls.agent_name,
+                confidence=conf,
+                first_seen=datetime.utcnow().isoformat(),
+                last_seen=datetime.utcnow().isoformat()
+            ))
+            
             session.add(f)
+            session.add_all(iocs_to_save)
             session.add(Evidence(
                 investigation_id=investigation_id, agent_name=cls.agent_name,
                 evidence_type="THREAT_INTEL", severity=severity, observed_fact=evidence_str, confidence=conf

@@ -94,7 +94,6 @@ class Orchestrator:
                     # Trigger Sandbox
                     from ..agents.sandbox_agent import SandboxAgent
                     await SandboxAgent.analyze(inv.id, session)
-                    
                     inv.status = InvestigationStatus.BEHAVIOR_ANALYSIS
                     inv.current_stage = "Analyzing Browser Behavior"
                     await session.commit()
@@ -112,6 +111,10 @@ class Orchestrator:
                     final_risk_output = await RiskEngine.calculate_risk(inv.id, session)
                     inv.final_risk_score = final_risk_output.score
                     await Orchestrator.log_event(session, inv.id, "RISK_RECALCULATED", "RiskEngine", {"final_risk": final_risk_output.score})
+                    
+                    # 6. ESCALATION (Phase 5)
+                    from ..engine.escalation import EscalationEngine
+                    await EscalationEngine.evaluate_and_escalate(inv.id, session)
                     
                     if final_risk_output.deep_analysis_required:
                         inv.status = InvestigationStatus.DEEP_ANALYSIS

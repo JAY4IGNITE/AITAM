@@ -100,6 +100,22 @@ const InvestigationDetails = () => {
 
   if (!inv) return <div className="p-8">Loading investigation...</div>;
 
+  const downloadReport = async () => {
+    try {
+      const res = await fetch(`/api/investigations/${id}/report`);
+      const reportData = await res.json();
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ThreatLens-Report-${inv.display_id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Report generation failed.");
+    }
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-end">
@@ -107,9 +123,19 @@ const InvestigationDetails = () => {
           <h1 className="text-3xl font-bold">{inv.display_id}</h1>
           <p className="text-gray-400 mt-1">Status: {inv.status} | Stage: {inv.current_stage}</p>
         </div>
-        <div className="text-right">
-          <div className="text-sm text-gray-400">Overall Progress</div>
-          <div className="text-2xl font-bold">{inv.progress}%</div>
+        <div className="text-right flex items-center gap-4">
+          {inv.status === 'COMPLETED' && (
+            <button 
+              onClick={downloadReport}
+              className="bg-primary/20 text-primary border border-primary/50 px-4 py-2 rounded-md font-semibold hover:bg-primary hover:text-white transition text-sm"
+            >
+              Download Report
+            </button>
+          )}
+          <div>
+            <div className="text-sm text-gray-400">Overall Progress</div>
+            <div className="text-2xl font-bold">{inv.progress}%</div>
+          </div>
         </div>
       </div>
 
@@ -252,6 +278,39 @@ function App() {
             </div>
           </aside>
 
+// Threat Reports Component
+const ThreatReports = () => {
+  const { data: alerts } = useQuery({
+    queryKey: ['alerts'],
+    queryFn: () => fetch('/api/investigations/reports/alerts').then(res => res.json()),
+    refetchInterval: 5000
+  });
+
+  return (
+    <div className="p-8 space-y-6">
+      <h1 className="text-3xl font-bold mb-6">Threat Escalations & Reports</h1>
+      <div className="grid grid-cols-1 gap-4">
+        {alerts?.map((alert: any, idx: number) => (
+          <div key={idx} className="glass-panel p-6 border-l-4" style={{borderLeftColor: alert.severity === 'CRITICAL' ? '#ef4444' : '#f97316'}}>
+            <div className="flex justify-between items-start mb-2">
+              <h3 className="text-lg font-bold">{alert.title}</h3>
+              <span className="text-xs bg-black/40 px-2 py-1 rounded text-gray-400">{new Date(alert.created_at).toLocaleString()}</span>
+            </div>
+            <p className="text-gray-300 text-sm mb-4">{alert.description}</p>
+            <div className="flex justify-between items-center">
+              <span className={`text-xs font-semibold px-2 py-1 rounded ${alert.status === 'OPEN' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                {alert.status}
+              </span>
+              <Link to={`/investigations/${alert.investigation_id}`} className="text-sm text-primary hover:underline">View Investigation →</Link>
+            </div>
+          </div>
+        ))}
+        {(!alerts || alerts.length === 0) && <div className="text-gray-500 italic">No active escalations.</div>}
+      </div>
+    </div>
+  );
+};
+
           {/* Main Content */}
           <main className="flex-1 overflow-y-auto">
             <Routes>
@@ -259,7 +318,7 @@ function App() {
               <Route path="/investigate" element={<Investigate />} />
               <Route path="/investigations" element={<div className="p-8">Active Investigations List</div>} />
               <Route path="/investigations/:id" element={<InvestigationDetails />} />
-              <Route path="/threat-reports" element={<div className="p-8">Threat Reports</div>} />
+              <Route path="/threat-reports" element={<ThreatReports />} />
             </Routes>
           </main>
         </div>
