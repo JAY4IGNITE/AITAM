@@ -25,9 +25,10 @@ app.include_router(websocket.router, tags=["WebSockets"])
 async def startup_event():
     from .database.connection import engine
     from .models.base import Base
-    async with engine.begin() as conn:
-        # Create all tables if they don't exist
-        await conn.run_sync(Base.metadata.create_all)
+    
+    # We now rely exclusively on Alembic for schema migrations instead of create_all
+    # Ensure you run `alembic upgrade head` after docker-compose up
+    pass
 
 @app.get("/")
 def root():
