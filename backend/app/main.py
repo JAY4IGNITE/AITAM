@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api import investigations, websocket, auth, threat_intel, incidents
+from .api import investigations, websocket, auth, threat_intel, incidents, datasets, evaluation
 
 from contextlib import asynccontextmanager
 
@@ -36,6 +36,8 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(investigations.router, prefix="/api/investigations", tags=["Investigations"])
 app.include_router(incidents.router, prefix="/api/incidents", tags=["Incidents"])
 app.include_router(threat_intel.router, prefix="/api/threat-intel", tags=["Threat Intel"])
+app.include_router(datasets.router, prefix="/api/datasets", tags=["Datasets"])
+app.include_router(evaluation.router, prefix="/api/evaluation", tags=["Evaluation"])
 app.include_router(websocket.router, tags=["WebSockets"])
 
 from .api import demo

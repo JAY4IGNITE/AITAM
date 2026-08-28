@@ -9,6 +9,8 @@ from .user import User
 from .alert import Alert, AlertStatus
 from .graph import EvidenceNode, EvidenceEdge
 from .journey import AttackJourneyStep, RiskAssessment
+from .dataset import Dataset, DatasetSample
+from .evaluation import EvaluationRun, EvaluationResult
 from .autonomous import (
     TriageResult, InvestigationPlan, ResponseAction,
     InvestigationTask, AgentMessage, AgentToolPolicy, Incident, InvestigationFeedback
@@ -25,6 +27,8 @@ __all__ = [
     "SandboxSession",
     "InvestigationEvent",
     "IOC",
+    "Artifact",
+    "User",
     "Alert",
     "AlertStatus",
     "EvidenceNode",
@@ -38,5 +42,11 @@ __all__ = [
     "AgentToolPolicy",
     "ResponseAction",
     "Incident",
-    "InvestigationFeedback"
+    "InvestigationFeedback",
+    "Dataset",
+    "DatasetSample",
+    "EvaluationRun",
+    "EvaluationResult",
+    "Report",
+    "AttackStep"
 ]
