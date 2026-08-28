@@ -60,31 +60,39 @@ class ResponseAgent(BaseAgent):
         score = inv.final_risk_score or 0
         
         action_type = "REPORT"
-        details = "Routine incident report generated for analyst review."
+        description = "Routine incident report generated for analyst review."
         confidence = 0.8
+        status = "RECOMMENDED"
         
         if score > 80:
             action_type = "BLOCK"
-            details = "Critical risk detected. Initiating immediate network/DNS block for associated indicators."
+            description = "Critical risk detected. Initiating immediate network/DNS block for associated indicators. Requires approval."
             confidence = 0.99
+            status = "PENDING_APPROVAL"
         elif score > 60:
             action_type = "BLOCK"
-            details = "High risk detected. Recommending DNS sinkholing."
+            description = "High risk detected. Recommending DNS sinkholing. Requires approval."
             confidence = 0.90
+            status = "PENDING_APPROVAL"
         elif score > 20 and any(f.category == "phishing" for f in findings):
             action_type = "EDUCATE"
-            details = "Detected low/medium risk phishing attempt. Deploying targeted 'Why this was blocked' training to the recipient."
+            description = "Detected low/medium risk phishing attempt. Deploying targeted 'Why this was blocked' training to the recipient."
             confidence = 0.85
+            status = "PENDING_APPROVAL"
         elif score <= 20:
             action_type = "REPORT"
-            details = "Low risk or clean. Logged for audit purposes."
+            description = "Low risk or clean. Logged for audit purposes."
             confidence = 0.95
+            status = "RECOMMENDED"
             
         action = ResponseAction(
             investigation_id=investigation_id,
             action_type=action_type,
-            details=details,
-            confidence=confidence
+            description=description,
+            risk=score,
+            confidence=confidence,
+            status=status,
+            requested_by="ResponseRecommendationAgent"
         )
         session.add(action)
         
@@ -94,6 +102,6 @@ class ResponseAgent(BaseAgent):
             status="COMPLETED", 
             execution_time=0.5,
             findings=[],
-            evidence=[{"action": action_type, "details": details}], 
+            evidence=[{"action": action_type, "description": description, "status": status}], 
             confidence=confidence
         )

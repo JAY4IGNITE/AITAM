@@ -1,15 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from ..models.investigation import Investigation
-from ..models.autonomous import TriageResult
+from ..models.autonomous import Incident
 from ..models.agent import AgentRun
 from .base import BaseAgent
 from ..schemas.agent_io import AgentResult
 import asyncio
 
-class TriageAgent(BaseAgent):
-    agent_name = "triage_agent"
+class IncidentSummarizationAgent(BaseAgent):
+    agent_name = "incident_summarization_agent"
     agent_version = "1.0.0"
-    capabilities = ["priority_evaluation"]
+    capabilities = ["summarization"]
 
     @classmethod
     async def analyze(cls, investigation_id: str, session: AsyncSession) -> AgentResult:
@@ -45,35 +46,21 @@ class TriageAgent(BaseAgent):
 
     @classmethod
     async def _execute(cls, investigation_id: str, session: AsyncSession, run: AgentRun) -> AgentResult:
-        inv = await session.get(Investigation, investigation_id)
-        if not inv:
-            raise ValueError("Investigation not found")
+        res = await session.execute(select(Incident).where(Incident.investigation_id == investigation_id))
+        incident = res.scalar_one_or_none()
+        
+        if not incident:
+            return AgentResult(
+                agent_name=cls.agent_name, agent_version=cls.agent_version, 
+                status="COMPLETED", execution_time=0.1, findings=[], evidence=[], confidence=1.0
+            )
             
-        text = (inv.normalized_input or inv.target).lower()
+        await asyncio.sleep(0.5) # Simulate LLM summarization
         
-        # Simulated LLM decision logic for Priority
-        await asyncio.sleep(0.5) # Simulate LLM generation time
-        
-        priority = "P3_MEDIUM"
-        reasons = ["Input requires baseline investigation to determine risk."]
-        
-        if "spam" in text or "unsubscribe" in text or "newsletter" in text:
-            priority = "P4_LOW"
-            reasons = ["Likely promotional spam or newsletter.", "Does not warrant heavy multi-agent analysis."]
-        elif "malicious" in text or "urgent" in text or "login" in text or "crypto" in text:
-            priority = "P1_CRITICAL"
-            reasons = ["High urgency or credential harvesting keywords detected.", "Potential high-impact phishing attempt."]
-        elif "suspicious" in text:
-            priority = "P2_HIGH"
-            reasons = ["Indicators of suspicious content detected."]
-            
-        triage = TriageResult(
-            investigation_id=investigation_id,
-            priority=priority,
-            reasons=reasons,
-            confidence=0.94
-        )
-        session.add(triage)
+        # In a real implementation, we would query all AgentMessages and Findings
+        # to generate a natural language summary. For the demo, we generate a structured technical summary.
+        incident.summary = f"Autonomous analysis confirmed {incident.priority} severity threat. Multiple intelligence agents agreed on malicious indicators. Sandbox analysis corroborated risk. Human approval is pending for containment."
+        session.add(incident)
         
         return AgentResult(
             agent_name=cls.agent_name, 
@@ -81,6 +68,6 @@ class TriageAgent(BaseAgent):
             status="COMPLETED", 
             execution_time=0.5,
             findings=[],
-            evidence=[{"priority": priority, "reason": reason}], 
+            evidence=[{"summary": incident.summary}], 
             confidence=0.9
         )

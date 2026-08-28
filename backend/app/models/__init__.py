@@ -9,30 +9,34 @@ from .user import User
 from .alert import Alert, AlertStatus
 from .graph import EvidenceNode, EvidenceEdge
 from .journey import AttackJourneyStep, RiskAssessment
-from .autonomous import TriageResult, InvestigationPlan, ResponseAction
+from .autonomous import (
+    TriageResult, InvestigationPlan, ResponseAction,
+    InvestigationTask, AgentMessage, AgentToolPolicy, Incident, InvestigationFeedback
+)
 
 __all__ = [
     "BaseModel",
-    "Base",
     "Investigation",
     "InvestigationStatus",
     "InputType",
-    "AgentRun",
-    "AgentStatus",
-    "Evidence",
-    "SandboxSession",
-    "SandboxStatus",
     "Finding",
+    "Evidence",
+    "AgentRun",
+    "SandboxSession",
     "InvestigationEvent",
-    "Report",
-    "AttackStep",
     "IOC",
-    "Artifact",
-    "User",
     "Alert",
     "AlertStatus",
     "EvidenceNode",
     "EvidenceEdge",
     "AttackJourneyStep",
-    "RiskAssessment"
+    "RiskAssessment",
+    "TriageResult",
+    "InvestigationPlan",
+    "InvestigationTask",
+    "AgentMessage",
+    "AgentToolPolicy",
+    "ResponseAction",
+    "Incident",
+    "InvestigationFeedback"
 ]

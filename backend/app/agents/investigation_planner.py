@@ -45,41 +45,59 @@ class InvestigationPlannerAgent(BaseAgent):
 
     @classmethod
     async def _execute(cls, investigation_id: str, session: AsyncSession, run: AgentRun) -> AgentResult:
+        from sqlalchemy.future import select
+        from ..models.autonomous import TriageResult
+        
         inv = await session.get(Investigation, investigation_id)
         if not inv:
             raise ValueError("Investigation not found")
             
+        triage_res = await session.execute(select(TriageResult).filter_by(investigation_id=investigation_id))
+        triage = triage_res.scalar_one_or_none()
+        
+        priority = triage.priority if triage else "P3_MEDIUM"
+        
         text = (inv.normalized_input or inv.target).lower()
         
         await asyncio.sleep(0.5) # Simulate LLM generation time
         
-        # Base agents for almost all types
-        planned = ["ContentIntelligenceAgent", "PhishingDetectionAgent"]
-        reason = "Standard baseline agents selected."
+        depth = "LEVEL_1"
+        planned_tasks = []
         
-        # Simulated LLM logic:
-        if inv.input_type in [InputType.URL, InputType.WEBPAGE]:
-            planned.extend(["URLIntelligenceAgent", "ThreatIntelligenceAgent"])
-            reason = "Detected URL/Webpage input; scheduling URL analysis and Threat Intelligence."
-        elif inv.input_type == InputType.EMAIL:
-            planned.extend(["EmailIntelligenceAgent", "URLIntelligenceAgent", "BrandImpersonationAgent", "ThreatIntelligenceAgent"])
-            reason = "Detected Email input; scheduling Email headers, Brand impersonation, and Threat Intel."
-        elif inv.input_type == InputType.SMS:
-            planned.extend(["SMSIntelligenceAgent", "URLIntelligenceAgent", "BrandImpersonationAgent", "ThreatIntelligenceAgent"])
-            reason = "Detected SMS smishing context; routing to SMS, Brand, and Threat Intel."
-        elif inv.input_type == InputType.SOCIAL:
-            planned.extend(["SocialMessageIntelligenceAgent", "URLIntelligenceAgent", "ThreatIntelligenceAgent"])
-            reason = "Detected Social media context."
+        if priority == "P4_LOW":
+            depth = "LEVEL_0"
+            planned_tasks = []
+            reason = "Basic validation only due to low priority."
+        elif priority == "P3_MEDIUM":
+            depth = "LEVEL_1"
+            planned_tasks = ["ContentIntelligenceAgent", "URLIntelligenceAgent", "ThreatIntelligenceAgent"]
+            reason = "Standard baseline agents selected for medium priority."
+        elif priority == "P2_HIGH":
+            depth = "LEVEL_2"
+            planned_tasks = ["ContentIntelligenceAgent", "URLIntelligenceAgent", "ThreatIntelligenceAgent", "PhishingDetectionAgent", "BrandImpersonationAgent"]
+            reason = "Deep multi-agent analysis required for high priority."
+        else: # P1_CRITICAL
+            depth = "LEVEL_3"
+            planned_tasks = ["ContentIntelligenceAgent", "URLIntelligenceAgent", "ThreatIntelligenceAgent", "PhishingDetectionAgent", "BrandImpersonationAgent", "SANDBOX_ANALYSIS"]
+            reason = "Maximum depth analysis including Sandbox requested for critical priority."
             
-        if "crypto" in text or "wallet" in text or "payment" in text:
-            if "BrandImpersonationAgent" not in planned:
-                planned.append("BrandImpersonationAgent")
-            reason += " Added Brand Impersonation due to financial keywords."
+        if inv.input_type == InputType.EMAIL and depth != "LEVEL_0":
+            planned_tasks.append("EmailIntelligenceAgent")
+        elif inv.input_type == InputType.SMS and depth != "LEVEL_0":
+            planned_tasks.append("SMSIntelligenceAgent")
+        elif inv.input_type == InputType.SOCIAL and depth != "LEVEL_0":
+            planned_tasks.append("SocialMessageIntelligenceAgent")
+            
+        # Deduplicate
+        planned_tasks = list(set(planned_tasks))
             
         plan = InvestigationPlan(
             investigation_id=investigation_id,
-            planned_agents=planned,
-            reason=reason
+            priority=priority,
+            depth=depth,
+            planned_agents=planned_tasks,
+            reason=reason,
+            status="ACTIVE"
         )
         session.add(plan)
         
@@ -89,6 +107,6 @@ class InvestigationPlannerAgent(BaseAgent):
             status="COMPLETED", 
             execution_time=0.5,
             findings=[],
-            evidence=[{"planned_agents": planned, "reason": reason}], 
+            evidence=[{"planned_agents": planned_tasks, "depth": depth, "reason": reason}], 
             confidence=0.95
         )

@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { Shield, LayoutDashboard, Activity, FileWarning, Search, SearchCheck } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThreatIntel } from './pages/ThreatIntel';
+import { IncidentsQueue } from './components/IncidentsQueue';
+import { IncidentDetails } from './components/IncidentDetails';
 
 // We'll create these components next
 const Dashboard = () => <div className="p-8"><h1 className="text-3xl font-bold mb-6">Dashboard</h1><div className="glass-panel p-6 h-64 flex items-center justify-center">Analytics coming soon</div></div>;
@@ -560,6 +562,10 @@ function App() {
                 <Shield className="w-4 h-4 text-gray-400" />
                 Threat Intel
               </Link>
+              <Link to="/incidents" className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-white/5 transition text-sm font-medium text-orange-400 bg-orange-500/10 border border-orange-500/20">
+                <Shield className="w-4 h-4 text-orange-400" />
+                SOC Incidents
+              </Link>
             </nav>
             <div className="p-6 text-xs text-gray-500">
               Risk-Adaptive Analysis Engine v1.0
@@ -608,6 +614,8 @@ const ThreatReports = () => {
               <Route path="/investigations/:id" element={<InvestigationDetails />} />
               <Route path="/threat-reports" element={<ThreatReports />} />
               <Route path="/threat-intel" element={<ThreatIntel />} />
+              <Route path="/incidents" element={<IncidentsQueue />} />
+              <Route path="/incidents/:id" element={<IncidentDetails />} />
             </Routes>
           </main>
         </div>

@@ -47,7 +47,8 @@ async def create_investigation(
     await db.commit()
     
     # Start orchestrator in background
-    background_tasks.add_task(Orchestrator.start_investigation, new_inv.id)
+    from ..engine.coordinator import InvestigationCoordinator
+    background_tasks.add_task(InvestigationCoordinator.start_investigation, new_inv.id)
     
     return {
         "investigation_id": new_inv.id,
@@ -277,7 +278,7 @@ async def analyze_input(
     db: AsyncSession = Depends(get_db)
 ):
     from ..models.investigation import InputType, Investigation, InvestigationStatus
-    from ..engine.orchestrator import Orchestrator
+    from ..engine.coordinator import InvestigationCoordinator
     try:
         input_type_enum = InputType(req.input_type.upper())
     except ValueError:
@@ -294,7 +295,7 @@ async def analyze_input(
     await db.commit()
     await db.refresh(inv)
     
-    background_tasks.add_task(Orchestrator.start_investigation, inv.id)
+    background_tasks.add_task(InvestigationCoordinator.run_loop, inv.id, db)
     return {"investigation_id": inv.id, "input_type": inv.input_type.value, "status": inv.status.value}
 
 @router.post("/input/preview")
