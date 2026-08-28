@@ -24,7 +24,7 @@ app.include_router(websocket.router, tags=["WebSockets"])
 @app.on_event("startup")
 async def startup_event():
     from .database.connection import engine
-    from .models import Base
+    from .models.base import Base
     async with engine.begin() as conn:
         # Create all tables if they don't exist
         await conn.run_sync(Base.metadata.create_all)

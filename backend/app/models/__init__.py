@@ -4,6 +4,8 @@ from .agent import AgentRun, AgentStatus, Evidence, SandboxSession
 from .iocs import IOC, Artifact
 from .report import Report, AttackStep
 from .user import User
+from .event import InvestigationEvent
+from .finding import Finding
 
 __all__ = [
     "BaseModel",
@@ -18,5 +20,7 @@ __all__ = [
     "Artifact",
     "Report",
     "AttackStep",
-    "User"
+    "User",
+    "InvestigationEvent",
+    "Finding"
 ]

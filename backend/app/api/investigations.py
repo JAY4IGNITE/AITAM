@@ -3,10 +3,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List
 
-from ...database.connection import get_db
-from ...models import Investigation, InvestigationStatus
-from ...schemas import InvestigationCreate, InvestigationResponse
-from ...engine.orchestrator import Orchestrator
+from ..database.connection import get_db
+from ..models import Investigation, InvestigationStatus
+from ..schemas import InvestigationCreate, InvestigationResponse
+from ..engine.orchestrator import Orchestrator
 
 router = APIRouter()
 

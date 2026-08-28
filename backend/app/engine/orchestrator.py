@@ -46,8 +46,10 @@ class Orchestrator:
                 if initial_risk > 40: # Suspicious or higher
                     inv.status = InvestigationStatus.SANDBOX_PENDING
                     await session.commit()
+                    
                     # Trigger Sandbox
-                    # await SandboxAgent.analyze(inv.id, session)
+                    from ..agents.sandbox_agent import SandboxAgent
+                    await SandboxAgent.analyze(inv.id, session)
                 
                 # ... other states ...
                 
