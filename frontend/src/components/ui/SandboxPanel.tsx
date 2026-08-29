@@ -10,7 +10,10 @@ export const SandboxPanel = ({ investigationId }: SandboxPanelProps) => {
   const { data: sandbox } = useQuery({
     queryKey: ['sandbox', investigationId],
     queryFn: () => fetch(`/api/investigations/${investigationId}/sandbox`).then(res => res.json()),
-    refetchInterval: (data) => (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 2000
+    refetchInterval: (query: any) => {
+      const data = query?.state?.data;
+      return (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 2000;
+    }
   });
 
   const { data: events } = useQuery({

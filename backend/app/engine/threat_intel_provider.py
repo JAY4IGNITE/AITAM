@@ -1,16 +1,21 @@
 import asyncio
 import logging
 import json
+import base64
+import os
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
-import os
+import httpx
 
 try:
-    import redis.asyncio as redis
+    import redis.asyncio as aioredis
 except ImportError:
-    import redis
+    import redis as aioredis
 
 from ..schemas.threat_intel import ThreatIntelResult, Verdict, ThreatIntelProviderHealth
+from ..models.threat_intel import ThreatIndicator
+from ..database.connection import AsyncSessionLocal
+from sqlalchemy.future import select
 
 logger = logging.getLogger("threat_intel")
 if not logger.handlers:
@@ -36,66 +41,445 @@ class ThreatIntelProvider:
     async def health_check(self) -> bool:
         return True
 
-class MockThreatIntelProvider(ThreatIntelProvider):
-    provider_name = "MockThreatIntel"
-    provider_version = "1.0"
-    supported_indicators = ["URL", "DOMAIN", "IP", "HASH", "EMAIL"]
+class URLhausProvider(ThreatIntelProvider):
+    """
+    Real URLhaus Threat Intelligence Provider from abuse.ch.
+    Queries URLhaus API for malicious URLs, payloads, and host reputations.
+    Uses URLHAUS_AUTH_KEY from environment without exposing it to clients.
+    """
+    provider_name = "URLhaus"
+    provider_version = "2.0.0"
+    supported_indicators = ["URL", "DOMAIN", "IP", "HASH"]
+
+    def __init__(self):
+        super().__init__()
+        self.auth_key = os.getenv("URLHAUS_AUTH_KEY") or os.getenv("URLHAUS_API_KEY", "")
+        self.base_url = "https://urlhaus-api.abuse.ch/v1"
 
     async def lookup(self, indicator: str, indicator_type: str) -> ThreatIntelResult:
         start_time = asyncio.get_event_loop().time()
-        
-        # Simulate network delay
-        await asyncio.sleep(0.05)
-        
-        indicator_lower = indicator.lower()
-        verdict = Verdict.UNKNOWN
-        conf = 0.5
-        cats = []
-        ev = []
-        
-        if "malicious" in indicator_lower or "123.45" in indicator_lower:
-            verdict = Verdict.MALICIOUS
-            conf = 0.99
-            cats = ["malware", "phishing"]
-            ev = ["Known malware distribution domain"]
-        elif "suspicious" in indicator_lower or "scam" in indicator_lower:
-            verdict = Verdict.SUSPICIOUS
-            conf = 0.75
-            cats = ["spam"]
-            ev = ["Recently registered domain with low reputation"]
-        elif "clean" in indicator_lower or "safe" in indicator_lower:
-            verdict = Verdict.CLEAN
-            conf = 0.95
-            ev = ["No malicious activity observed"]
-        elif "timeout" in indicator_lower:
+        headers = {
+            "User-Agent": "ThreatLens-SOC-Engine/2.0"
+        }
+        if self.auth_key:
+            headers["Auth-Key"] = self.auth_key
+
+        endpoint = f"{self.base_url}/url/"
+        data: Dict[str, Any] = {}
+
+        if indicator_type == "URL":
+            endpoint = f"{self.base_url}/url/"
+            data = {"url": indicator}
+        elif indicator_type in ["DOMAIN", "IP"]:
+            endpoint = f"{self.base_url}/host/"
+            data = {"host": indicator}
+        elif indicator_type == "HASH":
+            endpoint = f"{self.base_url}/payload/"
+            if len(indicator) == 64:
+                data = {"sha256_hash": indicator}
+            else:
+                data = {"md5_hash": indicator}
+        else:
+            return self._unknown_result(indicator, indicator_type, "Unsupported indicator type for URLhaus")
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(endpoint, data=data, headers=headers)
+                
+            end_time = asyncio.get_event_loop().time()
+            self.latency_ms = (end_time - start_time) * 1000
+
+            if resp.status_code != 200:
+                self.last_error = f"HTTP {resp.status_code}"
+                return self._unknown_result(indicator, indicator_type, f"URLhaus API returned HTTP {resp.status_code}")
+
+            json_resp = resp.json()
+            query_status = json_resp.get("query_status", "unknown")
+
+            self.last_success = datetime.now(timezone.utc)
+            self.last_error = None
+
+            if query_status == "ok":
+                # Found malicious record
+                threat = json_resp.get("threat") or json_resp.get("url_status") or "malware"
+                tags = json_resp.get("tags") or []
+                url_status = json_resp.get("url_status", "unknown")
+                reporter = json_resp.get("reporter", "URLhaus Community")
+                
+                evidence = [
+                    f"Identified as active threat on URLhaus: {threat}",
+                    f"Reported by {reporter} (status: {url_status})"
+                ]
+                if tags:
+                    evidence.append(f"Associated malware tags: {', '.join(tags)}")
+
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.MALICIOUS,
+                    confidence=0.98,
+                    reputation_score=10,
+                    categories=["malware", "phishing"] + tags,
+                    evidence=evidence,
+                    first_seen=datetime.now(timezone.utc),
+                    last_seen=datetime.now(timezone.utc),
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={
+                        "threat": threat,
+                        "url_status": url_status,
+                        "tags": tags,
+                        "urlhaus_reference": json_resp.get("urlhaus_reference")
+                    }
+                )
+            elif query_status == "no_results":
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.CLEAN,
+                    confidence=0.70,
+                    reputation_score=85,
+                    categories=[],
+                    evidence=["Not listed in URLhaus malicious dataset."],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"query_status": "no_results"}
+                )
+            else:
+                return self._unknown_result(indicator, indicator_type, f"URLhaus query status: {query_status}")
+
+        except httpx.TimeoutException:
             self.last_error = "Timeout"
-            raise TimeoutError("Mock Provider Timeout")
-            
-        end_time = asyncio.get_event_loop().time()
-        self.latency_ms = (end_time - start_time) * 1000
-        self.last_success = datetime.now(timezone.utc)
-        self.last_error = None
-        
+            return self._unknown_result(indicator, indicator_type, "URLhaus request timed out")
+        except Exception as e:
+            self.last_error = str(e)
+            return self._unknown_result(indicator, indicator_type, f"URLhaus error: {str(e)}")
+
+    def _unknown_result(self, indicator: str, indicator_type: str, reason: str) -> ThreatIntelResult:
         return ThreatIntelResult(
             provider=self.provider_name,
             indicator_type=indicator_type,
             indicator=indicator,
-            verdict=verdict,
-            confidence=conf,
-            reputation_score=10 if verdict == Verdict.MALICIOUS else (90 if verdict == Verdict.CLEAN else 50),
-            categories=cats,
-            evidence=ev,
-            first_seen=datetime.now(timezone.utc),
-            last_seen=datetime.now(timezone.utc),
+            verdict=Verdict.UNKNOWN,
+            confidence=0.0,
+            reputation_score=50,
+            categories=[],
+            evidence=[reason],
             lookup_timestamp=datetime.now(timezone.utc),
-            provider_metadata={"mock": True}
+            provider_metadata={"error": reason}
         )
+
+class VirusTotalProvider(ThreatIntelProvider):
+    """
+    VirusTotal v3 Intelligence Provider.
+    Queries VirusTotal for URLs, Domains, IPs, and Hashes.
+    """
+    provider_name = "VirusTotal"
+    provider_version = "3.0.0"
+    supported_indicators = ["URL", "DOMAIN", "IP", "HASH"]
+
+    def __init__(self):
+        super().__init__()
+        self.api_key = os.getenv("VIRUSTOTAL_API_KEY", "")
+        self.enabled = bool(self.api_key)
+
+    async def lookup(self, indicator: str, indicator_type: str) -> ThreatIntelResult:
+        if not self.api_key:
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.UNKNOWN,
+                confidence=0.0,
+                evidence=["VirusTotal API key not configured."],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata={"status": "not_configured"}
+            )
+
+        start_time = asyncio.get_event_loop().time()
+        headers = {"x-apikey": self.api_key}
+
+        url = ""
+        if indicator_type == "URL":
+            url_id = base64.urlsafe_b64encode(indicator.encode()).decode().strip("=")
+            url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
+        elif indicator_type == "DOMAIN":
+            url = f"https://www.virustotal.com/api/v3/domains/{indicator}"
+        elif indicator_type == "IP":
+            url = f"https://www.virustotal.com/api/v3/ip_addresses/{indicator}"
+        elif indicator_type == "HASH":
+            url = f"https://www.virustotal.com/api/v3/files/{indicator}"
+
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(url, headers=headers)
+
+            end_time = asyncio.get_event_loop().time()
+            self.latency_ms = (end_time - start_time) * 1000
+
+            if resp.status_code == 404:
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.UNKNOWN,
+                    confidence=0.5,
+                    evidence=["Indicator not observed in VirusTotal dataset."],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"status": "not_found"}
+                )
+            elif resp.status_code != 200:
+                self.last_error = f"HTTP {resp.status_code}"
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.UNKNOWN,
+                    confidence=0.0,
+                    evidence=[f"VirusTotal API HTTP {resp.status_code}"],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"error": f"HTTP {resp.status_code}"}
+                )
+
+            data = resp.json().get("data", {}).get("attributes", {})
+            stats = data.get("last_analysis_stats", {})
+            malicious = stats.get("malicious", 0)
+            suspicious = stats.get("suspicious", 0)
+            harmless = stats.get("harmless", 0)
+
+            self.last_success = datetime.now(timezone.utc)
+            self.last_error = None
+
+            evidence = [f"VirusTotal detection stats: {malicious} malicious, {suspicious} suspicious, {harmless} clean."]
+
+            if malicious >= 3:
+                verdict = Verdict.MALICIOUS
+                confidence = min(0.99, 0.70 + (malicious * 0.03))
+                reputation = max(5, 100 - (malicious * 10))
+            elif malicious >= 1 or suspicious >= 2:
+                verdict = Verdict.SUSPICIOUS
+                confidence = 0.75
+                reputation = 40
+            elif harmless > 0:
+                verdict = Verdict.CLEAN
+                confidence = 0.85
+                reputation = 90
+            else:
+                verdict = Verdict.UNKNOWN
+                confidence = 0.5
+                reputation = 50
+
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=verdict,
+                confidence=round(confidence, 2),
+                reputation_score=reputation,
+                categories=["security_vendors_flagged"] if malicious > 0 else [],
+                evidence=evidence,
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata=stats
+            )
+
+        except Exception as e:
+            self.last_error = str(e)
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.UNKNOWN,
+                confidence=0.0,
+                evidence=[f"VirusTotal query failed: {str(e)}"],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata={"error": str(e)}
+            )
+
+class GoogleSafeBrowsingProvider(ThreatIntelProvider):
+    """
+    Google Safe Browsing API v4 Provider.
+    """
+    provider_name = "GoogleSafeBrowsing"
+    provider_version = "4.0.0"
+    supported_indicators = ["URL"]
+
+    def __init__(self):
+        super().__init__()
+        self.api_key = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
+        self.enabled = bool(self.api_key)
+
+    async def lookup(self, indicator: str, indicator_type: str) -> ThreatIntelResult:
+        if not self.api_key or indicator_type != "URL":
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.UNKNOWN,
+                confidence=0.0,
+                evidence=["Google Safe Browsing key not configured or non-URL indicator."],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata={"status": "skipped"}
+            )
+
+        endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={self.api_key}"
+        payload = {
+            "client": {"clientId": "threatlens-soc", "clientVersion": "2.0.0"},
+            "threatInfo": {
+                "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+                "platformTypes": ["ANY_PLATFORM"],
+                "threatEntryTypes": ["URL"],
+                "threatEntries": [{"url": indicator}]
+            }
+        }
+
+        start_time = asyncio.get_event_loop().time()
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(endpoint, json=payload)
+
+            end_time = asyncio.get_event_loop().time()
+            self.latency_ms = (end_time - start_time) * 1000
+
+            if resp.status_code != 200:
+                self.last_error = f"HTTP {resp.status_code}"
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.UNKNOWN,
+                    confidence=0.0,
+                    evidence=[f"Safe Browsing API error: HTTP {resp.status_code}"],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"error": resp.text}
+                )
+
+            data = resp.json()
+            matches = data.get("matches", [])
+
+            self.last_success = datetime.now(timezone.utc)
+            self.last_error = None
+
+            if matches:
+                threat_types = [m.get("threatType") for m in matches]
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.MALICIOUS,
+                    confidence=0.96,
+                    reputation_score=15,
+                    categories=threat_types,
+                    evidence=[f"Google Safe Browsing match: {', '.join(threat_types)}"],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"matches": matches}
+                )
+            else:
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.CLEAN,
+                    confidence=0.75,
+                    reputation_score=90,
+                    categories=[],
+                    evidence=["No threat matches found in Google Safe Browsing index."],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"matches": []}
+                )
+
+        except Exception as e:
+            self.last_error = str(e)
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.UNKNOWN,
+                confidence=0.0,
+                evidence=[f"Google Safe Browsing lookup failed: {str(e)}"],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata={"error": str(e)}
+            )
+
+class DatabaseThreatIntelProvider(ThreatIntelProvider):
+    """
+    Local PostgreSQL Threat Indicators Database Provider.
+    Checks ingested URLhaus feeds and confirmed threat reports.
+    """
+    provider_name = "ThreatLens-LocalDB"
+    provider_version = "2.0.0"
+    supported_indicators = ["URL", "DOMAIN", "IP", "HASH", "EMAIL"]
+
+    async def lookup(self, indicator: str, indicator_type: str) -> ThreatIntelResult:
+        start_time = asyncio.get_event_loop().time()
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(ThreatIndicator).where(
+                        ThreatIndicator.indicator == indicator,
+                        ThreatIndicator.status == "ACTIVE"
+                    ).limit(1)
+                )
+                match = result.scalar_one_or_none()
+
+            end_time = asyncio.get_event_loop().time()
+            self.latency_ms = (end_time - start_time) * 1000
+            self.last_success = datetime.now(timezone.utc)
+            self.last_error = None
+
+            if match:
+                verdict_map = {
+                    "MALICIOUS": Verdict.MALICIOUS,
+                    "SUSPICIOUS": Verdict.SUSPICIOUS,
+                    "CLEAN": Verdict.CLEAN
+                }
+                verdict = verdict_map.get(match.classification.upper(), Verdict.UNKNOWN)
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=verdict,
+                    confidence=match.confidence or 0.95,
+                    reputation_score=10 if verdict == Verdict.MALICIOUS else 80,
+                    categories=match.tags or [],
+                    evidence=[f"Known indicator in ThreatLens database (source: {match.source}, tags: {', '.join(match.tags or [])})"],
+                    first_seen=match.first_seen,
+                    last_seen=match.last_seen,
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"source": match.source, "tags": match.tags}
+                )
+            else:
+                return ThreatIntelResult(
+                    provider=self.provider_name,
+                    indicator_type=indicator_type,
+                    indicator=indicator,
+                    verdict=Verdict.UNKNOWN,
+                    confidence=0.5,
+                    evidence=["Not found in local threat indicators repository."],
+                    lookup_timestamp=datetime.now(timezone.utc),
+                    provider_metadata={"found": False}
+                )
+
+        except Exception as e:
+            self.last_error = str(e)
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.UNKNOWN,
+                confidence=0.0,
+                evidence=[f"Database threat lookup error: {str(e)}"],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata={"error": str(e)}
+            )
 
 class ThreatIntelProviderRegistry:
     def __init__(self):
         self.providers: Dict[str, ThreatIntelProvider] = {}
-        redis_host = os.environ.get("REDIS_HOST", "redis")
-        self.redis = redis.Redis(host=redis_host, port=6379, db=0, decode_responses=True)
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        try:
+            self.redis = aioredis.from_url(redis_url, decode_responses=True)
+        except Exception:
+            self.redis = None
         
     def register(self, provider: ThreatIntelProvider):
         self.providers[provider.provider_name] = provider
@@ -107,7 +491,7 @@ class ThreatIntelProviderRegistry:
             health_list.append(ThreatIntelProviderHealth(
                 provider_name=name,
                 enabled=p.enabled,
-                status="Healthy" if p.last_error is None else "Degraded",
+                status="Healthy" if p.last_error is None else f"Degraded ({p.last_error})",
                 latency_ms=p.latency_ms,
                 last_success=p.last_success,
                 last_error=p.last_error
@@ -115,41 +499,40 @@ class ThreatIntelProviderRegistry:
         return health_list
 
     async def lookup(self, indicator: str, indicator_type: str) -> List[ThreatIntelResult]:
-        # 1. Check Cache
-        cache_key = f"threatintel:{indicator_type}:{indicator}"
-        try:
-            cached_data = await self.redis.get(cache_key)
-            if cached_data:
-                logger.info(f'{{"event": "cache_hit", "indicator": "{indicator}"}}')
-                cached_json = json.loads(cached_data)
-                return [ThreatIntelResult(**res) for res in cached_json]
-        except Exception as e:
-            logger.warning(f'{{"event": "cache_error", "error": "{str(e)}"}}')
-            
-        logger.info(f'{{"event": "cache_miss", "indicator": "{indicator}"}}')
-            
-        results = []
-        tasks = []
+        indicator_norm = indicator.strip()
+        cache_key = f"threatintel:{indicator_type.upper()}:{indicator_norm}"
         
-        # 2. Gather Providers
-        for p in self.providers.values():
-            if p.enabled and indicator_type in p.supported_indicators:
-                tasks.append(self._safe_lookup(p, indicator, indicator_type))
-                
-        # 3. Execute concurrently
-        completed = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        for res in completed:
-            if isinstance(res, ThreatIntelResult):
-                results.append(res)
-                
-        # 4. Save to Cache if we got results
-        if results:
+        # 1. Check Redis Cache
+        if self.redis:
             try:
-                # TTL 1 hour (3600 seconds)
+                cached_data = await self.redis.get(cache_key)
+                if cached_data:
+                    logger.info(f'{{"event": "cache_hit", "indicator": "{indicator_norm}"}}')
+                    cached_json = json.loads(cached_data)
+                    return [ThreatIntelResult(**res) for res in cached_json]
+            except Exception as e:
+                logger.warning(f'{{"event": "cache_error", "error": "{str(e)}"}}')
+            
+        # 2. Gather Enabled Providers
+        tasks = []
+        for p in self.providers.values():
+            if p.enabled and indicator_type.upper() in p.supported_indicators:
+                tasks.append(self._safe_lookup(p, indicator_norm, indicator_type.upper()))
+                
+        # 3. Execute concurrently with timeout
+        results: List[ThreatIntelResult] = []
+        if tasks:
+            completed = await asyncio.gather(*tasks, return_exceptions=True)
+            for res in completed:
+                if isinstance(res, ThreatIntelResult):
+                    results.append(res)
+                
+        # 4. Save to Redis Cache if we got valid results
+        if results and self.redis:
+            try:
                 await self.redis.setex(
                     cache_key, 
-                    3600, 
+                    3600,  # 1 hour TTL
                     json.dumps([r.model_dump(mode='json') for r in results])
                 )
             except Exception as e:
@@ -159,8 +542,7 @@ class ThreatIntelProviderRegistry:
 
     async def _safe_lookup(self, provider: ThreatIntelProvider, indicator: str, indicator_type: str) -> Optional[ThreatIntelResult]:
         try:
-            # Enforce provider-level timeout
-            return await asyncio.wait_for(provider.lookup(indicator, indicator_type), timeout=5.0)
+            return await asyncio.wait_for(provider.lookup(indicator, indicator_type), timeout=6.0)
         except asyncio.TimeoutError:
             provider.last_error = "Timeout"
             logger.error(f'{{"event": "provider_timeout", "provider": "{provider.provider_name}"}}')
@@ -168,8 +550,9 @@ class ThreatIntelProviderRegistry:
                 provider=provider.provider_name,
                 indicator_type=indicator_type,
                 indicator=indicator,
-                verdict=Verdict.ERROR,
+                verdict=Verdict.UNKNOWN,
                 confidence=0.0,
+                evidence=[f"Provider {provider.provider_name} timed out after 6 seconds."],
                 lookup_timestamp=datetime.now(timezone.utc),
                 provider_metadata={"error": "timeout"}
             )
@@ -180,12 +563,16 @@ class ThreatIntelProviderRegistry:
                 provider=provider.provider_name,
                 indicator_type=indicator_type,
                 indicator=indicator,
-                verdict=Verdict.ERROR,
+                verdict=Verdict.UNKNOWN,
                 confidence=0.0,
+                evidence=[f"Provider {provider.provider_name} error: {str(e)}"],
                 lookup_timestamp=datetime.now(timezone.utc),
                 provider_metadata={"error": str(e)}
             )
 
-# Global Registry Instance
+# Global Registry Instance with Real Providers
 registry = ThreatIntelProviderRegistry()
-registry.register(MockThreatIntelProvider())
+registry.register(DatabaseThreatIntelProvider())
+registry.register(URLhausProvider())
+registry.register(VirusTotalProvider())
+registry.register(GoogleSafeBrowsingProvider())

@@ -1,15 +1,15 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.investigation import Investigation
 from ..models.autonomous import TriageResult
-from ..models.agent import AgentRun
+from ..models.agent import AgentRun, Evidence
 from .base import BaseAgent
 from ..schemas.agent_io import AgentResult
 import asyncio
 
 class TriageAgent(BaseAgent):
     agent_name = "triage_agent"
-    agent_version = "1.0.0"
-    capabilities = ["priority_evaluation"]
+    agent_version = "2.0.0"
+    capabilities = ["priority_evaluation", "threat_triage"]
 
     @classmethod
     async def analyze(cls, investigation_id: str, session: AsyncSession) -> AgentResult:
@@ -36,7 +36,7 @@ class TriageAgent(BaseAgent):
             result = AgentResult(
                 agent_name=cls.agent_name, agent_version=cls.agent_version,
                 status="FAILED", execution_time=time.time() - start_time,
-                errors=[str(e)]
+                errors=str(e)
             )
             
         run.duration = time.time() - start_time
@@ -51,36 +51,50 @@ class TriageAgent(BaseAgent):
             
         text = (inv.normalized_input or inv.target).lower()
         
-        # Simulated LLM decision logic for Priority
-        await asyncio.sleep(0.5) # Simulate LLM generation time
+        priority = "P2_HIGH"
+        reasons = ["General input requires thorough multi-agent examination."]
         
-        priority = "P3_MEDIUM"
-        reasons = ["Input requires baseline investigation to determine risk."]
-        
-        if "spam" in text or "unsubscribe" in text or "newsletter" in text:
-            priority = "P4_LOW"
-            reasons = ["Likely promotional spam or newsletter.", "Does not warrant heavy multi-agent analysis."]
-        elif "malicious" in text or "urgent" in text or "login" in text or "crypto" in text:
+        # High-risk heuristics
+        critical_terms = ["malicious", "urgent", "login", "password", "crypto", "verify", "suspended", "wire transfer", "seed phrase", "giveaway"]
+        low_terms = ["newsletter", "unsubscribe", "weekly digest", "privacy policy"]
+
+        if any(term in text for term in critical_terms):
             priority = "P1_CRITICAL"
-            reasons = ["High urgency or credential harvesting keywords detected.", "Potential high-impact phishing attempt."]
-        elif "suspicious" in text:
+            reasons = [
+                "Critical threat indicators or credential harvesting lures detected.",
+                "Elevated to maximum triage priority for full multi-agent & sandbox detonation."
+            ]
+        elif any(term in text for term in low_terms) and not any(term in text for term in critical_terms):
+            priority = "P4_LOW"
+            reasons = ["Likely benign administrative / promotional communication."]
+        else:
             priority = "P2_HIGH"
-            reasons = ["Indicators of suspicious content detected."]
+            reasons = ["Input contains active link or unstructured text requiring standard intelligence correlation."]
             
         triage = TriageResult(
             investigation_id=investigation_id,
             priority=priority,
             reasons=reasons,
-            confidence=0.94
+            confidence=0.95
         )
         session.add(triage)
+        
+        # Log evidence
+        session.add(Evidence(
+            investigation_id=investigation_id,
+            agent_name=cls.agent_name,
+            evidence_type="TRIAGE_ASSESSMENT",
+            severity="high" if priority in ["P1_CRITICAL", "P2_HIGH"] else "low",
+            observed_fact=f"Triage assigned {priority}: {'; '.join(reasons)}",
+            confidence=0.95
+        ))
         
         return AgentResult(
             agent_name=cls.agent_name, 
             agent_version=cls.agent_version, 
             status="COMPLETED", 
-            execution_time=0.5,
+            execution_time=0.1,
             findings=[],
-            evidence=[{"priority": priority, "reason": reason}], 
-            confidence=0.9
+            evidence=[{"priority": priority, "reasons": reasons}], 
+            confidence=0.95
         )

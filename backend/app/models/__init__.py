@@ -3,7 +3,8 @@ from .investigation import Investigation, InvestigationStatus, InputType
 from .agent import AgentRun, AgentStatus, Evidence, SandboxSession, SandboxStatus
 from .finding import Finding
 from .event import InvestigationEvent
-from .report import Report, AttackStep
+from .report import Report, AttackStep, ThreatReport
+from .threat_intel import ThreatIndicator
 from .iocs import IOC, Artifact
 from .user import User
 from .alert import Alert, AlertStatus

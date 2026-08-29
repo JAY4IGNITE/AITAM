@@ -19,6 +19,18 @@ class AttackStep(BaseModel):
     description = Column(String)
     mitre_tactic = Column(String, nullable=True)
     mitre_technique = Column(String, nullable=True)
-    evidence_ids = Column(JSON) # List of evidence IDs supporting this step
-    
     investigation = relationship("Investigation")
+
+class ThreatReport(BaseModel):
+    __tablename__ = "threat_reports"
+
+    indicator = Column(String, nullable=False, index=True)
+    report_type = Column(String, nullable=False, default="URL")  # URL, EMAIL, SMS, QR, WEBPAGE, SOCIAL
+    description = Column(String, nullable=False)
+    investigation_id = Column(String, ForeignKey("investigations.id", ondelete="SET NULL"), nullable=True, index=True)
+    reporter_email = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="PENDING", index=True)  # PENDING, REVIEWED, RESOLVED
+    resolution_notes = Column(String, nullable=True)
+
+    investigation = relationship("Investigation")
+

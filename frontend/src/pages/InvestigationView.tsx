@@ -1,7 +1,11 @@
-import React from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
-import { AlertTriangle, Download, Activity, MonitorPlay } from 'lucide-react';
+import { 
+  AlertTriangle, Download, Activity, MonitorPlay, ShieldAlert,
+  GlobeLock, CheckCircle, Clock, ArrowRight, ShieldCheck, HelpCircle,
+  FileText, Sparkles, Layers
+} from 'lucide-react';
 
 import { InvestigationTimeline } from '../components/ui/InvestigationTimeline';
 import { AgentActivity } from '../components/ui/AgentActivity';
@@ -12,11 +16,15 @@ import { SandboxPanel } from '../components/ui/SandboxPanel';
 
 export const InvestigationView = () => {
   const { id } = useParams();
+  const [downloading, setDownloading] = useState(false);
   
   const { data: inv } = useQuery({
     queryKey: ['investigation', id],
     queryFn: () => fetch(`/api/investigations/${id}`).then(res => res.json()),
-    refetchInterval: (data) => (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 2000
+    refetchInterval: (query: any) => {
+      const data = query?.state?.data;
+      return (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 2000;
+    }
   });
 
   const { data: agents } = useQuery({
@@ -29,6 +37,18 @@ export const InvestigationView = () => {
     queryKey: ['risk', id],
     queryFn: () => fetch(`/api/investigations/${id}/risk`).then(res => res.json()),
     refetchInterval: 2000
+  });
+
+  const { data: explanation } = useQuery({
+    queryKey: ['explanation', id],
+    queryFn: () => fetch(`/api/investigations/${id}/explanation`).then(res => res.json()),
+    enabled: inv?.status === 'COMPLETED'
+  });
+
+  const { data: threatIntel } = useQuery({
+    queryKey: ['threatIntel', id],
+    queryFn: () => fetch(`/api/investigations/${id}/threat-intelligence`).then(res => res.json()),
+    enabled: !!inv
   });
 
   const { data: autonomous } = useQuery({
@@ -49,12 +69,42 @@ export const InvestigationView = () => {
     enabled: inv?.status === 'COMPLETED'
   });
 
-  if (!inv) return <div className="p-8 text-gray-500 animate-pulse">Loading investigation data...</div>;
+  const exportReport = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/investigations/${id}/report`);
+      const reportData = await res.json();
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ThreatLens_Report_${inv?.display_id || id}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      alert('Failed to download report');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  if (!inv) return <div className="p-8 text-gray-500 animate-pulse">Loading investigation telemetry...</div>;
+
+  const stages = [
+    { label: 'Queued', active: true, done: inv.status !== 'QUEUED' },
+    { label: 'Triaging', active: ['TRIAGING', 'INITIAL_ANALYSIS', 'AGENT_ANALYSIS', 'COMPLETED'].includes(inv.status), done: ['AGENT_ANALYSIS', 'EVIDENCE_CORRELATION', 'RISK_EVALUATION', 'SANDBOX_RUNNING', 'COMPLETED'].includes(inv.status) },
+    { label: 'Analyzing', active: ['AGENT_ANALYSIS', 'EVIDENCE_CORRELATION', 'RISK_EVALUATION', 'COMPLETED'].includes(inv.status), done: ['EVIDENCE_CORRELATION', 'RISK_EVALUATION', 'SANDBOX_RUNNING', 'COMPLETED'].includes(inv.status) },
+    { label: 'Threat Intel', active: ['EVIDENCE_CORRELATION', 'RISK_EVALUATION', 'COMPLETED'].includes(inv.status), done: ['RISK_EVALUATION', 'SANDBOX_RUNNING', 'COMPLETED'].includes(inv.status) },
+    { label: 'Sandbox', active: ['SANDBOX_QUEUED', 'SANDBOX_RUNNING', 'BEHAVIOR_ANALYSIS', 'COMPLETED'].includes(inv.status), done: ['BEHAVIOR_ANALYSIS', 'COMPLETED'].includes(inv.status) },
+    { label: 'Evidence Fusion', active: ['EVIDENCE_CORRELATION', 'RE_EVALUATION', 'COMPLETED'].includes(inv.status), done: ['COMPLETED'].includes(inv.status) },
+    { label: 'Risk & Mitigation', active: ['RISK_EVALUATION', 'REPORT_GENERATION', 'COMPLETED'].includes(inv.status), done: inv.status === 'COMPLETED' },
+  ];
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-500">
       
-      {/* Header */}
+      {/* Header Bar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-6">
         <div>
           <div className="flex items-center gap-4 mb-2">
@@ -67,38 +117,57 @@ export const InvestigationView = () => {
               {inv.status}
             </span>
             {autonomous?.triage && (
-              <span className={`px-3 py-1 text-xs font-bold rounded uppercase tracking-wider ${
-                autonomous.triage.priority === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-              }`}>
-                {autonomous.triage.priority} PRIORITY
+              <span className="px-3 py-1 text-xs font-bold rounded uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                {autonomous.triage.priority}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span className="font-mono bg-black/40 px-2 py-0.5 rounded border border-white/5">{inv.input_type}</span>
-            <span className="truncate max-w-xl">{inv.target}</span>
+            <span className="font-mono bg-black/40 px-2 py-0.5 rounded border border-white/5 font-semibold text-primary">{inv.input_type}</span>
+            <span className="truncate max-w-xl font-mono text-gray-300">{inv.target}</span>
           </div>
         </div>
         
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
           {autonomous?.response && (
             <Link 
               to="/incidents"
-              className={`px-4 py-2 rounded-md font-bold text-sm flex items-center gap-2 transition ${
-                autonomous.response.action === 'BLOCK' ? 'bg-red-500/10 text-red-400 border border-red-500/30 hover:bg-red-500/20' :
-                'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/20'
+              className={`px-4 py-2 rounded-md font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition ${
+                autonomous.response.action === 'BLOCK' ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30' :
+                'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-500/30'
               }`}
             >
               <AlertTriangle className="w-4 h-4" />
-              RECOMMENDED ACTION: {autonomous.response.action}
+              RECOMMENDED: {autonomous.response.action}
             </Link>
           )}
           <button 
+            onClick={exportReport}
             className="flex items-center gap-2 bg-white/5 border border-white/10 text-gray-300 px-4 py-2 rounded-md hover:bg-white/10 transition disabled:opacity-50 text-sm font-semibold"
-            disabled={inv.status !== 'COMPLETED'}
+            disabled={inv.status !== 'COMPLETED' || downloading}
           >
-            <Download className="w-4 h-4" /> Export Report
+            <Download className="w-4 h-4" /> {downloading ? 'Exporting...' : 'Export Report'}
           </button>
+        </div>
+      </div>
+
+      {/* Real-time Stage Progression Stepper */}
+      <div className="glass-panel p-4 border border-white/10">
+        <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+          <span className="font-semibold text-gray-300">Live Stage: <span className="text-primary font-mono">{inv.current_stage || inv.status}</span></span>
+          <span className="font-mono">{inv.status === 'COMPLETED' ? '100% Complete' : 'In Progress...'}</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-2 pt-2">
+          {stages.map((stage, idx) => (
+            <div key={idx} className={`p-2 rounded text-center border text-xs font-semibold flex items-center justify-center gap-1.5 ${
+              stage.done ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' :
+              stage.active ? 'bg-primary/20 border-primary/40 text-primary animate-pulse' :
+              'bg-black/30 border-white/5 text-gray-600'
+            }`}>
+              {stage.done ? <CheckCircle className="w-3 h-3 text-emerald-400" /> : <Clock className="w-3 h-3 text-gray-500" />}
+              <span>{stage.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -116,18 +185,111 @@ export const InvestigationView = () => {
           </div>
           
           <div className="glass-panel p-6">
-            <h2 className="text-lg font-bold mb-4 uppercase tracking-wide">Agent Activity</h2>
+            <h2 className="text-lg font-bold mb-4 uppercase tracking-wide flex items-center gap-2">
+              <Layers className="w-5 h-5 text-gray-400" />
+              Agent Activity
+            </h2>
             <AgentActivity agents={agents} />
           </div>
         </div>
 
-        {/* Middle & Right Column: Risk, Attack Journey, Evidence, Sandbox */}
+        {/* Middle & Right Column: Risk, Explanation, Threat Intel, Attack Journey, Evidence, Sandbox */}
         <div className="lg:col-span-8 space-y-6">
           
           {/* Risk Score Row */}
           <div className="glass-panel p-6">
             <RiskScore risk={risk} />
           </div>
+
+          {/* Explainable AI Explanation Card ("Why is this risky?") */}
+          {explanation && (
+            <div className="glass-panel p-6 border border-primary/20 bg-primary/5 space-y-4 animate-in fade-in">
+              <div className="flex items-center gap-2 text-primary font-bold text-base">
+                <Sparkles className="w-5 h-5" />
+                <span>EXPLAINABLE INTELLIGENCE: {explanation.title}</span>
+              </div>
+              
+              <p className="text-sm text-gray-300 leading-relaxed font-medium">
+                {explanation.summary}
+              </p>
+
+              {explanation.risk_factors?.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Key Risk Factors:</h4>
+                  <div className="space-y-2">
+                    {explanation.risk_factors.map((rf: any, idx: number) => (
+                      <div key={idx} className="bg-black/40 border border-white/5 p-3 rounded-lg flex items-start gap-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 mt-0.5 ${
+                          rf.severity === 'critical' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                          rf.severity === 'high' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
+                          'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          +{rf.contribution} pts
+                        </span>
+                        <div>
+                          <div className="text-sm font-semibold text-white">{rf.factor}</div>
+                          <div className="text-xs text-gray-400 mt-0.5">{rf.description}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {explanation.recommendations?.length > 0 && (
+                <div className="bg-black/60 border border-white/10 rounded-lg p-4 mt-3">
+                  <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4" /> Recommended Analyst / User Actions:
+                  </h4>
+                  <ul className="space-y-1.5 text-xs text-gray-300">
+                    {explanation.recommendations.map((rec: string, idx: number) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-amber-400 font-bold">•</span>
+                        <span>{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Threat Intelligence Indicator Correlation Card */}
+          {threatIntel && threatIntel.length > 0 && (
+            <div className="glass-panel p-6 space-y-4">
+              <h2 className="text-lg font-bold uppercase tracking-wide flex items-center gap-2">
+                <GlobeLock className="w-5 h-5 text-amber-400" />
+                Threat Intelligence Results ({threatIntel.length} provider lookups)
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {threatIntel.map((ti: any, idx: number) => (
+                  <div key={idx} className="bg-black/40 border border-white/5 p-3.5 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-sm text-white">{ti.provider}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                        ti.verdict === 'MALICIOUS' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                        ti.verdict === 'SUSPICIOUS' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                        ti.verdict === 'CLEAN' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                        'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {ti.verdict}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400 font-mono truncate">{ti.indicator}</div>
+                    {ti.evidence?.length > 0 && (
+                      <div className="text-xs text-gray-300 border-t border-white/5 pt-2 space-y-1">
+                        {ti.evidence.map((ev: string, eidx: number) => (
+                          <div key={eidx} className="flex items-start gap-1 text-[11px] text-gray-400">
+                            <span>•</span> <span>{ev}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           
           {/* Attack Journey & Graph Row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -146,7 +308,7 @@ export const InvestigationView = () => {
           <div className="glass-panel p-6">
             <h2 className="text-lg font-bold mb-4 uppercase tracking-wide flex items-center gap-2">
               <MonitorPlay className="w-5 h-5 text-gray-400" />
-              Isolated Browser Analysis
+              Isolated Browser Detonation
             </h2>
             <SandboxPanel investigationId={id!} />
           </div>

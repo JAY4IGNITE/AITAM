@@ -15,14 +15,17 @@ export function EvaluationResults() {
       if (!res.ok) throw new Error('Failed to fetch evaluation');
       return res.json();
     },
-    refetchInterval: (data) => (data?.status === 'COMPLETED' || data?.status === 'FAILED' ? false : 3000)
+    refetchInterval: (query: any) => {
+      const data = query?.state?.data;
+      return (data?.status === 'COMPLETED' || data?.status === 'FAILED') ? false : 3000;
+    }
   });
 
   if (isLoading) {
     return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
   }
 
-  const isRunning = run.status === 'RUNNING' || run.status === 'STARTING';
+  const isRunning = run?.status === 'RUNNING' || run?.status === 'STARTING';
 
   return (
     <div className="space-y-6">
@@ -32,37 +35,37 @@ export function EvaluationResults() {
             Evaluation Results
             {isRunning && <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />}
           </h1>
-          <p className="text-gray-400 mt-2">ID: {run.id}</p>
+          <p className="text-gray-400 mt-2">ID: {run?.id}</p>
         </div>
         <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-          run.status === 'COMPLETED' ? 'bg-green-900/30 text-green-400' :
-          run.status === 'FAILED' ? 'bg-red-900/30 text-red-400' :
+          run?.status === 'COMPLETED' ? 'bg-green-900/30 text-green-400' :
+          run?.status === 'FAILED' ? 'bg-red-900/30 text-red-400' :
           'bg-blue-900/30 text-blue-400'
         }`}>
-          {run.status}
+          {run?.status}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <div className="text-gray-400 text-sm font-medium">Total Samples</div>
-          <div className="text-3xl font-bold text-white mt-2">{run.total_samples || 0}</div>
+          <div className="text-3xl font-bold text-white mt-2">{run?.total_samples || 0}</div>
         </div>
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <div className="text-gray-400 text-sm font-medium">Completed</div>
           <div className="text-3xl font-bold text-green-400 mt-2 flex items-center gap-2">
-            <CheckCircle2 className="w-6 h-6" /> {run.completed_samples || 0}
+            <CheckCircle2 className="w-6 h-6" /> {run?.completed_samples || 0}
           </div>
         </div>
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
           <div className="text-gray-400 text-sm font-medium">Failed</div>
           <div className="text-3xl font-bold text-red-400 mt-2 flex items-center gap-2">
-            <XCircle className="w-6 h-6" /> {run.failed_samples || 0}
+            <XCircle className="w-6 h-6" /> {run?.failed_samples || 0}
           </div>
         </div>
       </div>
 
-      {run.status === 'COMPLETED' && run.accuracy !== null && (
+      {run?.status === 'COMPLETED' && run.accuracy !== null && (
         <>
           <h2 className="text-xl font-bold text-white mt-8 mb-4">Metrics (Macro Average)</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -78,7 +81,7 @@ export function EvaluationResults() {
                 <thead className="text-xs text-gray-300 uppercase bg-gray-900">
                   <tr>
                     <th className="px-6 py-3">Actual \ Predicted</th>
-                    {run.confusion_matrix.labels.map((l: str) => <th key={l} className="px-6 py-3">{l}</th>)}
+                    {run.confusion_matrix.labels.map((l: string) => <th key={l} className="px-6 py-3">{l}</th>)}
                   </tr>
                 </thead>
                 <tbody>
