@@ -254,48 +254,46 @@ export const EmailScanner = () => {
   };
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="p-8 max-w-[1600px] mx-auto space-y-6 animate-in fade-in duration-300">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-              <Mail className="w-8 h-8 text-primary" />
-              Automated Email Threat Ingestion & Swarm Analysis
-            </h1>
-            <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1.5 font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> TempMail.so
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-2xl font-bold tracking-tight text-white">Email Threat Ingestion</h1>
+            <span className="bg-zinc-800 text-zinc-300 border border-zinc-700 text-[10px] px-2 py-0.5 rounded font-mono font-medium">
+              TempMail Integration
             </span>
           </div>
-          <p className="text-gray-400 mt-1">Autonomous zero-copy pipeline: mailbox validation → automated email ingestion → artifact extraction → multi-agent swarm → Safe Browsing lookup → forensic verdict.</p>
+          <p className="text-xs text-zinc-400 mt-1">Autonomous zero-copy pipeline: mailbox validation → automated email ingestion → artifact extraction → multi-agent swarm → Safe Browsing lookup → forensic verdict.</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Link
             to="/agent-control"
-            className="bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 font-bold px-4 py-2 rounded-md transition flex items-center gap-2 text-sm"
+            className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 px-3 py-1.5 rounded-md transition text-xs font-medium flex items-center gap-1.5"
           >
-            <Sparkles className="w-4 h-4 text-primary" /> Live Agent Swarm View
+            <span>Swarm Console</span>
           </Link>
           <button
             onClick={() => setIsCreating(true)}
-            className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md hover:bg-primary/90 transition shadow-[0_0_20px_rgba(59,130,246,0.3)] flex items-center gap-2 text-sm"
+            className="bg-white hover:bg-zinc-200 text-zinc-950 font-semibold px-3.5 py-1.5 rounded-md transition text-xs flex items-center gap-1.5"
           >
-            <Plus className="w-4 h-4" /> Provision Inbox
+            <Plus className="w-3.5 h-3.5" />
+            <span>Provision Inbox</span>
           </button>
         </div>
       </div>
 
       {/* ONE-CLICK AUTOMATED INVESTIGATION PIPELINE CARD */}
-      <div className="glass-panel p-6 border border-primary/30 bg-primary/5 rounded-xl space-y-4">
+      <div className="glass-panel p-5 space-y-3">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <span className="text-xs font-bold text-primary uppercase font-mono tracking-wider flex items-center gap-1.5">
-              <Zap className="w-4 h-4" /> Fully Automated Phishing Pipeline
+            <span className="text-[10px] font-medium text-zinc-400 uppercase font-mono tracking-wider flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5 text-zinc-400" /> Automated Pipeline
             </span>
-            <h3 className="text-lg font-bold text-white mt-0.5">Start Automated Disposable Inbox Investigation</h3>
-            <p className="text-xs text-gray-400">Enter or select a temporary email address. The pipeline automatically monitors, ingests, extracts URLs, and runs the entire multi-agent swarm without manual copying.</p>
+            <h3 className="text-sm font-semibold text-white mt-0.5">Automated Disposable Inbox Investigation</h3>
+            <p className="text-xs text-zinc-400">Enter or select a temporary email address. The pipeline automatically monitors, ingests, extracts URLs, and runs the entire multi-agent swarm without manual copying.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

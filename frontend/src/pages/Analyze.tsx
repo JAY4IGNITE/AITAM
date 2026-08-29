@@ -1,13 +1,13 @@
 import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
-  ShieldAlert, Globe, Mail, MessageSquare, QrCode, Monitor, Share2, 
-  Upload, CheckCircle, Image as ImageIcon, Sparkles
+  Globe, Mail, MessageSquare, QrCode, Monitor, Share2, 
+  Upload, CheckCircle, RefreshCw, Terminal, Shield, ArrowRight, Play
 } from 'lucide-react';
 
 export const Analyze = () => {
   const [inputType, setInputType] = useState('URL');
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState('https://suspicious-bank-login.top/auth/verify');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -16,13 +16,15 @@ export const Analyze = () => {
   const navigate = useNavigate();
 
   const tabs = [
-    { id: 'URL', icon: Globe, label: 'URL / Link' },
-    { id: 'EMAIL', icon: Mail, label: 'Email (.eml / raw)' },
-    { id: 'SMS', icon: MessageSquare, label: 'SMS / Text' },
-    { id: 'QR', icon: QrCode, label: 'QR Image / Code' },
-    { id: 'WEBPAGE', icon: Monitor, label: 'Web Page' },
-    { id: 'SOCIAL', icon: Share2, label: 'Social Message' },
+    { id: 'URL', icon: Globe, label: 'URL / Link', placeholder: 'https://secure-login.suspicious-domain.top/auth', sample: 'https://suspicious-bank-login.top/auth/verify' },
+    { id: 'EMAIL', icon: Mail, label: 'Email (.eml / raw)', placeholder: 'From: security@fake-bank.com\nSubject: Urgent Account Verification\n\nPlease confirm your login: https://bank-verify.top/login', sample: 'From: support@paypal-notification.top\nSubject: Account Access Suspended\n\nDear Customer, we detected unauthorized login activity. Re-verify your credentials immediately: https://paypal-security-auth.top/recovery' },
+    { id: 'SMS', icon: MessageSquare, label: 'SMS / Text', placeholder: 'URGENT: Your parcel delivery is on hold. Pay fee: http://tracking-fee.top', sample: 'USPS ALERT: Package #9400111 cannot be delivered due to incorrect address. Update details within 24h at http://usps-address-update.top/fee or item will be returned.' },
+    { id: 'QR', icon: QrCode, label: 'QR Image / Code', placeholder: 'https://malicious-qr-redirect.top/login', sample: 'https://malicious-qr-redirect.top/login' },
+    { id: 'WEBPAGE', icon: Monitor, label: 'Web Page', placeholder: 'https://evil-portal.top/index.html', sample: 'https://evil-credential-portal.top/login.php' },
+    { id: 'SOCIAL', icon: Share2, label: 'Social Message', placeholder: 'Hey! You won $5,000 crypto giveaway! Claim: https://gift-claim.top', sample: 'Instagram Security: Your account is scheduled for copyright suspension. Appeal within 24 hours at https://instagram-help-verify.top/appeal' },
   ];
+
+  const currentTab = tabs.find(t => t.id === inputType) || tabs[0];
 
   const handleFileChange = (file: File) => {
     setSelectedFile(file);
@@ -33,9 +35,12 @@ export const Analyze = () => {
     reader.readAsDataURL(file);
   };
 
+  const loadSample = (sampleText: string) => {
+    setContent(sampleText);
+  };
+
   const startAnalysis = async () => {
     if (inputType === 'QR' && selectedFile) {
-      // Multipart upload
       setLoading(true);
       try {
         const formData = new FormData();
@@ -49,7 +54,7 @@ export const Analyze = () => {
           throw new Error(errData.detail || 'QR upload failed');
         }
         const data = await res.json();
-        navigate(`/investigations/${data.investigation_id}`);
+        navigate(`/agent-control/${data.investigation_id}`);
       } catch (e: any) {
         alert(`Failed to analyze QR image: ${e.message}`);
         setLoading(false);
@@ -57,20 +62,20 @@ export const Analyze = () => {
       return;
     }
 
-    if (!content) return;
+    if (!content.trim()) return;
     setLoading(true);
     try {
       const res = await fetch('/api/investigations/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input_type: inputType, content })
+        body: JSON.stringify({ input_type: inputType, content: content.trim() })
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || 'Analysis request failed');
       }
       const data = await res.json();
-      navigate(`/investigations/${data.investigation_id}`);
+      navigate(`/agent-control/${data.investigation_id}`);
     } catch (e: any) {
       alert(`Failed to start analysis: ${e.message}`);
       setLoading(false);
@@ -78,51 +83,76 @@ export const Analyze = () => {
   };
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="p-8 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
       
-      <div className="flex justify-between items-end">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Analyze Threat Vector</h1>
-          <p className="text-gray-400">Submit an artifact for autonomous multi-agent triage, threat intelligence correlation, and sandbox detonation.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Analyze Threat Vector</h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            Submit an artifact for autonomous multi-agent triage, Safe Browsing lookup, and threat correlation.
+          </p>
         </div>
+
+        <Link
+          to="/agent-control"
+          className="bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 px-3 py-1.5 rounded-md transition text-xs font-medium flex items-center gap-2 self-start md:self-auto"
+        >
+          <span>Live Swarm Feed</span>
+          <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
+        </Link>
       </div>
 
-      <div className="glass-panel overflow-hidden border border-white/10 shadow-2xl">
+      {/* Main Vector Box */}
+      <div className="glass-panel overflow-hidden">
         
-        {/* Tabs */}
-        <div className="flex border-b border-white/10 overflow-x-auto bg-black/40">
+        {/* Tabs Bar */}
+        <div className="flex border-b border-zinc-800/80 bg-zinc-950 overflow-x-auto p-1 gap-1">
           {tabs.map(tab => {
             const Icon = tab.icon;
             const isActive = inputType === tab.id;
             return (
               <button 
                 key={tab.id}
-                className={`flex items-center gap-2 px-6 py-4 font-semibold text-sm transition relative whitespace-nowrap ${
-                  isActive ? 'text-primary bg-white/5' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
+                className={`flex items-center gap-2 px-4 py-2.5 font-medium text-xs transition rounded-md whitespace-nowrap ${
+                  isActive 
+                    ? 'bg-zinc-800 text-white font-semibold' 
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
                 }`}
                 onClick={() => {
                   setInputType(tab.id);
+                  setContent(tab.sample);
                   setSelectedFile(null);
                   setFilePreview(null);
                 }}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-primary' : 'text-gray-500'}`} />
-                {tab.label}
-                {isActive && (
-                  <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary shadow-[0_0_10px_rgba(59,130,246,0.8)]" />
-                )}
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-zinc-500'}`} />
+                <span>{tab.label}</span>
               </button>
             );
           })}
         </div>
         
         {/* Input Area */}
-        <div className="p-8 bg-background/50">
+        <div className="p-6 space-y-4 bg-zinc-950/40">
+          
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">
+              Payload ({inputType}):
+            </span>
+            <button
+              onClick={() => loadSample(currentTab.sample)}
+              className="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1 transition"
+            >
+              <RefreshCw className="w-3 h-3" /> Load Sample
+            </button>
+          </div>
+
           {inputType === 'QR' ? (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div 
-                className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition ${
-                  dragOver ? 'border-primary bg-primary/10' : filePreview ? 'border-emerald-500/50 bg-black/40' : 'border-white/10 hover:border-white/20 bg-black/20'
+                className={`border border-dashed rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer transition ${
+                  dragOver ? 'border-zinc-500 bg-zinc-900' : filePreview ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-800 hover:border-zinc-700 bg-zinc-900/30'
                 }`}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -139,124 +169,79 @@ export const Analyze = () => {
                   type="file" 
                   ref={fileInputRef} 
                   className="hidden" 
-                  accept="image/png,image/jpeg,image/jpg,image/webp,image/bmp" 
+                  accept="image/png, image/jpeg, image/webp"
                   onChange={(e) => {
                     if (e.target.files?.[0]) {
                       handleFileChange(e.target.files[0]);
                     }
                   }}
                 />
-
                 {filePreview ? (
-                  <div className="flex flex-col items-center gap-4">
-                    <img src={filePreview} alt="QR Preview" className="max-h-48 rounded-lg border border-white/10 shadow-lg object-contain" />
-                    <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-                      <CheckCircle className="w-4 h-4" /> Ready for decoding ({selectedFile?.name})
+                  <div className="space-y-2 text-center">
+                    <img src={filePreview} alt="QR Code Preview" className="max-h-40 rounded mx-auto border border-zinc-700" />
+                    <div className="flex items-center justify-center gap-1.5 text-xs text-zinc-300 font-mono">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> {selectedFile?.name}
                     </div>
-                    <span className="text-xs text-gray-500">Click or drop another image to replace</span>
                   </div>
                 ) : (
-                  <div className="text-center space-y-3">
-                    <div className="p-4 rounded-full bg-primary/10 text-primary w-fit mx-auto">
-                      <Upload className="w-8 h-8" />
-                    </div>
-                    <div>
-                      <p className="text-white font-semibold text-base">Drop QR code image here or click to browse</p>
-                      <p className="text-gray-500 text-xs mt-1">Supports PNG, JPEG, WebP (Max 10MB)</p>
-                    </div>
+                  <div className="space-y-1.5 text-center">
+                    <Upload className="w-5 h-5 text-zinc-500 mx-auto" />
+                    <div className="text-xs font-medium text-zinc-300">Click or Drag & Drop QR Image</div>
+                    <div className="text-[10px] text-zinc-500 font-mono">PNG, JPG, WEBP</div>
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="h-[1px] bg-white/10 flex-1"></div>
-                <span className="text-xs text-gray-500 uppercase tracking-widest">or paste payload</span>
-                <div className="h-[1px] bg-white/10 flex-1"></div>
-              </div>
-
-              <textarea
-                className="w-full h-24 bg-[#050505] border border-white/10 rounded-lg p-4 focus:outline-none focus:border-primary/50 text-white font-mono text-sm resize-none"
-                placeholder="Or paste QR payload text / Base64 data URI here..."
+              <input
+                type="text"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={e => setContent(e.target.value)}
+                placeholder="Or paste QR decoded URL..."
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3.5 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-zinc-600 transition"
               />
             </div>
           ) : (
             <div>
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-300">Raw Artifact Data</span>
-                </div>
-                <span className="text-xs text-gray-500 font-mono">Format: {inputType}</span>
-              </div>
-              
-              <textarea
-                className="w-full h-56 bg-[#050505] border border-white/10 rounded-lg p-5 mb-6 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 text-white font-mono text-sm leading-relaxed resize-none shadow-inner placeholder:text-gray-700"
-                placeholder={`Paste raw ${tabLabel(inputType)} data here...\n\nThe Universal Input Processor will automatically normalize the content, extract IoCs, and trigger the appropriate intelligence agents.`}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-              />
+              {inputType === 'EMAIL' ? (
+                <textarea
+                  rows={7}
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  placeholder={currentTab.placeholder}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md p-3.5 text-white font-mono text-xs focus:outline-none focus:border-zinc-600 transition leading-relaxed"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  placeholder={currentTab.placeholder}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-md px-3.5 py-2.5 text-white font-mono text-xs focus:outline-none focus:border-zinc-600 transition"
+                />
+              )}
             </div>
           )}
-          
-          <div className="flex justify-end gap-4 mt-6">
-            <button 
-              className="text-gray-400 font-semibold px-6 py-2.5 rounded-md hover:text-white transition text-sm"
-              onClick={() => {
-                setContent('');
-                setSelectedFile(null);
-                setFilePreview(null);
-              }}
-              disabled={loading || (!content && !selectedFile)}
-            >
-              Clear
-            </button>
-            <button 
-              className="bg-primary text-primary-foreground font-bold px-8 py-2.5 rounded-md hover:bg-primary/90 transition shadow-[0_0_20px_rgba(59,130,246,0.3)] disabled:opacity-50 flex items-center gap-2 text-sm"
+
+          {/* Action Button */}
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-800/80">
+            <span className="text-xs text-zinc-400 font-mono">
+              Multi-agent triage + Safe Browsing enabled
+            </span>
+
+            <button
               onClick={startAnalysis}
-              disabled={loading || (!content && !selectedFile)}
+              disabled={loading || (!content.trim() && !selectedFile)}
+              className="bg-white hover:bg-zinc-200 text-zinc-950 font-semibold px-6 py-2 rounded-md transition text-xs flex items-center gap-2 disabled:opacity-40 shadow-sm"
             >
-              {loading ? (
-                <>
-                  <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin"></span>
-                  Processing Pipeline...
-                </>
-              ) : (
-                'Start Investigation'
-              )}
+              {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              <span>{loading ? 'Starting...' : 'Start Investigation'}</span>
             </button>
           </div>
+
         </div>
+
       </div>
-      
-      {/* Workflow Explanation Banner */}
-      <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 flex gap-3 text-sm text-blue-300">
-        <div className="mt-0.5"><Sparkles className="w-5 h-5 text-blue-400" /></div>
-        <div>
-          <p className="font-semibold mb-1">Autonomous Investigation Workflow</p>
-          <p className="opacity-80 leading-relaxed text-xs">
-            1. Universal Preprocessor normalizes artifact & extracts IoCs (URLs, Domains, IPs, Emails).<br />
-            2. Triage & Planner dynamic agents assign priority level and spawn specialized workers.<br />
-            3. Real-time Threat Intelligence queries URLhaus, VirusTotal, Google Safe Browsing, and local DB.<br />
-            4. Adaptive Sandbox detonates suspicious destinations in isolated headless Chromium.<br />
-            5. Evidence Fusion & Explainable Risk engine synthesizes final attack narrative.
-          </p>
-        </div>
-      </div>
-      
+
     </div>
   );
 };
-
-function tabLabel(id: string) {
-  const map: Record<string, string> = {
-    URL: 'URL or Link (e.g. http://suspicious-domain.com/login)',
-    EMAIL: 'Raw Email headers and body (.eml or pasted RFC822 text)',
-    SMS: 'SMS text message containing links or OTP lures',
-    QR: 'QR Code payload / base64',
-    WEBPAGE: 'Web Page URL or raw HTML',
-    SOCIAL: 'Social Media direct message or post content',
-  };
-  return map[id] || id;
-}

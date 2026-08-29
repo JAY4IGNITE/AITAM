@@ -11,7 +11,8 @@ import {
   Database,
   GraduationCap,
   Sparkles,
-  Mail
+  Mail,
+  Cpu
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -20,7 +21,7 @@ export const Sidebar = () => {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Analyze Threat', path: '/analyze', icon: Search },
-    { name: 'Agent Control Center', path: '/agent-control', icon: Sparkles, highlight: true },
+    { name: 'Agent Control Center', path: '/agent-control', icon: Cpu },
     { name: 'Email Threat Ingestion', path: '/email-scanner', icon: Mail },
     { name: 'Investigation Cases', path: '/investigations', icon: Activity },
     { name: 'Threat Intel Center', path: '/threat-intel', icon: GlobeLock },
@@ -31,21 +32,23 @@ export const Sidebar = () => {
   ];
 
   return (
-    <aside className="w-64 border-r border-white/10 flex flex-col bg-background h-screen sticky top-0 hidden md:flex z-40">
-      <div className="p-6 flex items-center gap-3 border-b border-white/5">
-        <div className="p-2 rounded-lg bg-primary/10 border border-primary/20 text-primary">
-          <Shield className="w-6 h-6" />
+    <aside className="w-64 border-r border-zinc-800/80 flex flex-col bg-zinc-950 h-screen sticky top-0 hidden md:flex z-40 select-none">
+      {/* Brand Header */}
+      <div className="px-5 py-5 flex items-center gap-3 border-b border-zinc-800/60">
+        <div className="w-8 h-8 rounded-md bg-white text-zinc-950 flex items-center justify-center font-bold text-sm">
+          TL
         </div>
         <div>
-          <span className="text-lg font-bold tracking-tight block text-white">ThreatLens</span>
-          <span className="text-[10px] text-primary uppercase tracking-widest font-mono flex items-center gap-1">
-            <Sparkles className="w-2.5 h-2.5" /> Autonomous SOC
-          </span>
+          <span className="text-sm font-semibold tracking-tight block text-zinc-100">ThreatLens</span>
+          <span className="text-[10px] text-zinc-400 font-mono">Autonomous SOC</span>
         </div>
       </div>
       
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-        <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3 px-2">Navigation</div>
+      {/* Nav List */}
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <div className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider mb-2 px-3">
+          Platform
+        </div>
         
         {navItems.map((item) => {
           const isActive = item.path === '/' 
@@ -57,35 +60,32 @@ export const Sidebar = () => {
             <Link 
               key={item.name}
               to={item.path} 
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-xs font-semibold ${
+              className={`flex items-center gap-2.5 px-3 py-2 rounded-md transition text-xs font-medium ${
                 isActive 
-                  ? item.highlight 
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
-                    : 'bg-primary/20 text-primary border border-primary/30 shadow-[0_0_10px_rgba(59,130,246,0.15)]' 
-                  : item.highlight
-                    ? 'text-emerald-400/90 hover:bg-white/5'
-                    : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
+                  ? 'bg-zinc-800/90 text-white font-semibold' 
+                  : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
               }`}
             >
-              <Icon className="w-4 h-4" />
-              {item.name}
+              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
+              <span>{item.name}</span>
             </Link>
           );
         })}
       </nav>
       
-      <div className="p-4 border-t border-white/5 space-y-2">
+      {/* Footer */}
+      <div className="p-3 border-t border-zinc-800/60 space-y-1">
         <Link 
           to="/settings" 
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg transition text-xs font-semibold ${
-            location.pathname === '/settings' ? 'bg-white/10 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'
+          className={`flex items-center gap-2.5 px-3 py-2 rounded-md transition text-xs font-medium ${
+            location.pathname === '/settings' ? 'bg-zinc-800 text-white font-semibold' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
           }`}
         >
-          <Settings className="w-4 h-4" />
-          Settings & Health
+          <Settings className="w-4 h-4 text-zinc-400" />
+          <span>Settings</span>
         </Link>
-        <div className="px-3 text-[10px] font-mono text-gray-600">
-          Engine v2.0 • Zero-Trust Mode
+        <div className="px-3 pt-1 text-[10px] font-mono text-zinc-400">
+          v2.0 • Online
         </div>
       </div>
     </aside>

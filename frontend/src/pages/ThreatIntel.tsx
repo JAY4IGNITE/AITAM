@@ -359,6 +359,56 @@ export const ThreatIntel = () => {
         )}
       </div>
 
+      {/* Autonomous SIEM / YARA Rule Generator Card */}
+      <div className="glass-panel p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-bold text-white uppercase tracking-wider font-mono">Autonomous Threat Rule Generator (YARA / Suricata)</h3>
+          </div>
+          <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            Auto-Synthesized
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <span className="text-xs font-mono text-gray-400">YARA Phishing & Malware Rule:</span>
+            <pre className="bg-black/80 border border-white/10 rounded-lg p-3 text-[11px] font-mono text-emerald-400 overflow-x-auto">
+{`rule ThreatLens_Autonomous_Phish_Block {
+    meta:
+        description = "Automated IoC detection rule"
+        author = "ThreatLens Autonomous SOC"
+        date = "${new Date().toISOString().split('T')[0]}"
+        severity = "HIGH"
+    strings:
+        $login1 = "auth/verify" nocase
+        $login2 = "account-update" nocase
+        $cred1 = "password" nocase
+        $cred2 = "credit card" nocase
+    condition:
+        any of ($login*) and 1 of ($cred*)
+}`}
+            </pre>
+          </div>
+
+          <div className="space-y-2">
+            <span className="text-xs font-mono text-gray-400">Suricata / Snort Network Signature:</span>
+            <pre className="bg-black/80 border border-white/10 rounded-lg p-3 text-[11px] font-mono text-cyan-400 overflow-x-auto">
+{`alert http $HOME_NET any -> $EXTERNAL_NET any (
+    msg:"THREATLENS Inbound Phishing Domain Redirection Detected";
+    flow:established,to_server;
+    content:"POST"; http_method;
+    content:"/auth/login"; http_uri;
+    classtype:trojan-activity;
+    sid:9001042; rev:1;
+)`}
+            </pre>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 };
+
