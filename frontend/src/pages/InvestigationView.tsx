@@ -4,7 +4,8 @@ import { useParams, Link } from 'react-router-dom';
 import { 
   AlertTriangle, Download, Activity, MonitorPlay, ShieldAlert,
   GlobeLock, CheckCircle, Clock, ArrowRight, ShieldCheck, HelpCircle,
-  FileText, Sparkles, Layers
+  FileText, Sparkles, Layers, Eye, X, Shield, Terminal, BookOpen,
+  ListOrdered, ExternalLink
 } from 'lucide-react';
 
 import { InvestigationTimeline } from '../components/ui/InvestigationTimeline';
@@ -17,6 +18,7 @@ import { SandboxPanel } from '../components/ui/SandboxPanel';
 export const InvestigationView = () => {
   const { id } = useParams();
   const [downloading, setDownloading] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
   
   const { data: inv } = useQuery({
     queryKey: ['investigation', id],
@@ -69,12 +71,18 @@ export const InvestigationView = () => {
     enabled: inv?.status === 'COMPLETED'
   });
 
+  const { data: reportData } = useQuery({
+    queryKey: ['report', id],
+    queryFn: () => fetch(`/api/investigations/${id}/report`).then(res => res.json()),
+    enabled: inv?.status === 'COMPLETED'
+  });
+
   const exportReport = async () => {
     setDownloading(true);
     try {
       const res = await fetch(`/api/investigations/${id}/report`);
-      const reportData = await res.json();
-      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -89,7 +97,7 @@ export const InvestigationView = () => {
     }
   };
 
-  if (!inv) return <div className="p-8 text-gray-500 animate-pulse">Loading investigation telemetry...</div>;
+  if (!inv) return <div className="p-8 text-gray-500 animate-pulse font-mono">Loading real-time investigation telemetry...</div>;
 
   const stages = [
     { label: 'Queued', active: true, done: inv.status !== 'QUEUED' },
@@ -141,12 +149,21 @@ export const InvestigationView = () => {
               RECOMMENDED: {autonomous.response.action}
             </Link>
           )}
+
+          <button 
+            onClick={() => setShowReportModal(true)}
+            className="flex items-center gap-2 bg-primary/20 border border-primary/40 text-primary px-4 py-2 rounded-md hover:bg-primary/30 transition disabled:opacity-50 text-sm font-semibold"
+            disabled={inv.status !== 'COMPLETED'}
+          >
+            <Eye className="w-4 h-4" /> View Full Report
+          </button>
+
           <button 
             onClick={exportReport}
             className="flex items-center gap-2 bg-white/5 border border-white/10 text-gray-300 px-4 py-2 rounded-md hover:bg-white/10 transition disabled:opacity-50 text-sm font-semibold"
             disabled={inv.status !== 'COMPLETED' || downloading}
           >
-            <Download className="w-4 h-4" /> {downloading ? 'Exporting...' : 'Export Report'}
+            <Download className="w-4 h-4" /> {downloading ? 'Exporting...' : 'Export JSON'}
           </button>
         </div>
       </div>
@@ -187,7 +204,7 @@ export const InvestigationView = () => {
           <div className="glass-panel p-6">
             <h2 className="text-lg font-bold mb-4 uppercase tracking-wide flex items-center gap-2">
               <Layers className="w-5 h-5 text-gray-400" />
-              Agent Activity
+              Agent Activity ({agents?.length || 0})
             </h2>
             <AgentActivity agents={agents} />
           </div>
@@ -206,7 +223,7 @@ export const InvestigationView = () => {
             <div className="glass-panel p-6 border border-primary/20 bg-primary/5 space-y-4 animate-in fade-in">
               <div className="flex items-center gap-2 text-primary font-bold text-base">
                 <Sparkles className="w-5 h-5" />
-                <span>EXPLAINABLE INTELLIGENCE: {explanation.title}</span>
+                <span>EXPLAINABLE FORENSIC SUMMARY: {explanation.title}</span>
               </div>
               
               <p className="text-sm text-gray-300 leading-relaxed font-medium">
@@ -215,7 +232,7 @@ export const InvestigationView = () => {
 
               {explanation.risk_factors?.length > 0 && (
                 <div>
-                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Key Risk Factors:</h4>
+                  <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Primary Risk Factors:</h4>
                   <div className="space-y-2">
                     {explanation.risk_factors.map((rf: any, idx: number) => (
                       <div key={idx} className="bg-black/40 border border-white/5 p-3 rounded-lg flex items-start gap-3">
@@ -259,7 +276,7 @@ export const InvestigationView = () => {
             <div className="glass-panel p-6 space-y-4">
               <h2 className="text-lg font-bold uppercase tracking-wide flex items-center gap-2">
                 <GlobeLock className="w-5 h-5 text-amber-400" />
-                Threat Intelligence Results ({threatIntel.length} provider lookups)
+                Threat Intelligence Correlation ({threatIntel.length} vendor lookups)
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {threatIntel.map((ti: any, idx: number) => (
@@ -315,6 +332,151 @@ export const InvestigationView = () => {
           
         </div>
       </div>
+
+      {/* Comprehensive Forensic Report Modal */}
+      {showReportModal && reportData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 overflow-y-auto">
+          <div className="glass-panel w-full max-w-5xl p-8 border border-white/20 shadow-2xl relative my-8 max-h-[90vh] overflow-y-auto space-y-6">
+            
+            {/* Header */}
+            <div className="flex items-start justify-between border-b border-white/10 pb-4">
+              <div>
+                <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-widest font-mono">
+                  <Shield className="w-4 h-4" /> ThreatLens Forensic Threat Report
+                </div>
+                <h2 className="text-2xl font-bold text-white mt-1">{reportData.metadata?.report_id || `REP-${inv.display_id}`}</h2>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">Generated: {new Date(reportData.metadata?.generated_at || Date.now()).toLocaleString()}</p>
+              </div>
+              <button onClick={() => setShowReportModal(false)} className="text-gray-400 hover:text-white p-1">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Executive Summary */}
+            <div className="bg-black/40 border border-white/10 p-5 rounded-lg space-y-3">
+              <h3 className="text-sm font-bold text-primary uppercase tracking-wider flex items-center gap-2">
+                <BookOpen className="w-4 h-4" /> Executive Summary
+              </h3>
+              <p className="text-sm text-gray-300 leading-relaxed">
+                {reportData.executive_summary?.summary}
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                <div className="bg-black/60 p-2.5 rounded border border-white/5">
+                  <div className="text-[10px] text-gray-400 uppercase font-mono">Risk Classification</div>
+                  <div className="text-base font-bold text-white">{reportData.executive_summary?.classification}</div>
+                </div>
+                <div className="bg-black/60 p-2.5 rounded border border-white/5">
+                  <div className="text-[10px] text-gray-400 uppercase font-mono">Calculated Score</div>
+                  <div className="text-base font-bold text-primary font-mono">{reportData.executive_summary?.final_risk_score}/100</div>
+                </div>
+                <div className="bg-black/60 p-2.5 rounded border border-white/5">
+                  <div className="text-[10px] text-gray-400 uppercase font-mono">Confidence</div>
+                  <div className="text-base font-bold text-white font-mono">{reportData.executive_summary?.confidence_percentage}%</div>
+                </div>
+                <div className="bg-black/60 p-2.5 rounded border border-white/5">
+                  <div className="text-[10px] text-gray-400 uppercase font-mono">Findings Identified</div>
+                  <div className="text-base font-bold text-white font-mono">{reportData.executive_summary?.findings_count} items</div>
+                </div>
+              </div>
+            </div>
+
+            {/* MITRE ATT&CK Matrix */}
+            {reportData.mitre_attack_matrix?.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-400" /> MITRE ATT&CK Threat Mapping
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono text-xs">
+                  {reportData.mitre_attack_matrix.map((m: any, idx: number) => (
+                    <div key={idx} className="bg-black/40 border border-white/10 p-3 rounded-lg space-y-1">
+                      <div className="flex justify-between text-purple-300 font-bold">
+                        <span>{m.tactic} ({m.tactic_id})</span>
+                        <span>{m.technique_id}</span>
+                      </div>
+                      <div className="text-white text-xs font-sans font-semibold">{m.technique}</div>
+                      <div className="text-gray-400 text-[11px] font-sans">{m.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tactical Containment Playbook */}
+            {reportData.containment_playbook?.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Terminal className="w-4 h-4 text-amber-400" /> Tactical Containment Playbook
+                </h3>
+                <div className="space-y-2">
+                  {reportData.containment_playbook.map((pb: any, idx: number) => (
+                    <div key={idx} className="bg-black/40 border border-white/10 p-3.5 rounded-lg space-y-1.5 font-sans">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-xs">{pb.step}</span>
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          {pb.priority}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-300">{pb.action}</p>
+                      <div className="bg-black/80 font-mono text-[11px] text-emerald-400 p-2 rounded border border-white/5">
+                        $ {pb.command}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Extracted IoCs */}
+            {reportData.indicators_of_compromise?.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <GlobeLock className="w-4 h-4 text-primary" /> Indicators of Compromise (IoCs)
+                </h3>
+                <div className="overflow-x-auto bg-black/40 border border-white/10 rounded-lg">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-white/5 text-gray-400 uppercase text-[10px]">
+                      <tr>
+                        <th className="px-4 py-2">Type</th>
+                        <th className="px-4 py-2">Indicator Value</th>
+                        <th className="px-4 py-2">Extracted By</th>
+                        <th className="px-4 py-2">Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {reportData.indicators_of_compromise.map((ioc: any, idx: number) => (
+                        <tr key={idx}>
+                          <td className="px-4 py-2 font-bold text-primary">{ioc.type}</td>
+                          <td className="px-4 py-2 text-gray-200">{ioc.value}</td>
+                          <td className="px-4 py-2 text-gray-400 font-sans">{ioc.source}</td>
+                          <td className="px-4 py-2 text-emerald-400">{Math.round((ioc.confidence || 0.95) * 100)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+              <button 
+                onClick={exportReport}
+                className="bg-primary text-primary-foreground font-bold px-5 py-2 rounded text-xs hover:bg-primary/90 flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" /> Download JSON Artifact
+              </button>
+              <button 
+                onClick={() => setShowReportModal(false)}
+                className="bg-white/5 border border-white/10 text-gray-300 font-semibold px-4 py-2 rounded text-xs hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
