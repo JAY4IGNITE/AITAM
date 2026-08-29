@@ -1,87 +1,107 @@
-# ThreatLens Architecture
+# ThreatLens Architecture Overview
 
-ThreatLens follows an event-driven, multi-agent microservice architecture designed for isolation, scalability, and deterministic autonomous reasoning.
-
-## High-Level Architecture Diagram
+ThreatLens is an autonomous, risk-adaptive cybersecurity investigation and threat intelligence platform designed to ingest, decompose, analyze, and neutralize multi-vector malicious campaigns in real time.
 
 ```mermaid
-graph TD
-    subgraph Frontend [SOC Dashboard (React)]
-        UI[Investigation View]
-        Incident[Incident Queue]
+flowchart TD
+    subgraph Inputs [Universal Ingestion Vectors]
+        U1[URL / Web Links]
+        U2[Email / EML Headers & Body]
+        U3[SMS / Smishing Text]
+        U4[QR Code Image / Payload]
+        U5[Web Page HTML]
+        U6[Social Media DM / Post]
     end
 
-    subgraph Backend [FastAPI Application]
-        API[API Endpoints]
-        Router[Universal Input Processor]
-        Coord[Investigation Coordinator]
-        Risk[Risk Engine]
+    subgraph Preprocessing [Universal Input Processor]
+        P1[Canonical Normalization]
+        P2[IoC Extraction URLs, Domains, IPs, Emails, Hashes]
     end
 
-    subgraph Async Layer [Celery Workers]
-        Worker[Celery Task Consumer]
-        AgentSystem[Multi-Agent System]
-        Planner[Investigation Planner]
-        Threat[Threat Intel Agent]
-        URL[URL Intelligence Agent]
-        Phish[Phishing Agent]
-        Resp[Response Agent]
+    subgraph Orchestration [Autonomous Multi-Agent Core]
+        T1[Triage Agent - Priority P1-P4]
+        IP[Investigation Planner Agent]
+        
+        subgraph Agents [Specialized Intelligence Agents]
+            A1[URL Intelligence Agent]
+            A2[Email Intelligence Agent]
+            A3[SMS Intelligence Agent]
+            A4[Social Message Agent]
+            A5[QR Code Processor]
+            A6[Brand Impersonation Agent]
+            A7[Content & Keyword Agent]
+            A8[Threat Intelligence Agent]
+        end
     end
 
-    subgraph Sandbox Environment [Isolated Docker Network]
-        SandboxCtrl[Sandbox Controller]
-        Playwright[Playwright Headless Browser]
+    subgraph ThreatIntel [Threat Intelligence Engine]
+        TI1[URLhaus Provider abuse.ch]
+        TI2[VirusTotal v3 Provider]
+        TI3[Google Safe Browsing v4]
+        TI4[PostgreSQL Local Indicators DB]
+        RC[(Redis Cache 1h TTL)]
     end
 
-    subgraph Data Layer [State & Storage]
-        PG[(PostgreSQL)]
-        Redis[(Redis Broker)]
+    subgraph Sandbox [Isolated Zero-Trust Detonation]
+        SB[Headless Playwright Container]
+        BA[Behavioral Telemetry & Screenshot Agent]
     end
 
-    UI -->|REST| API
-    API --> Router
-    Router --> Coord
-    Coord -->|Enqueue Agent Tasks| Redis
-    Redis --> Worker
-    Worker --> AgentSystem
-    AgentSystem --> Planner
-    AgentSystem --> Threat
-    AgentSystem --> URL
-    AgentSystem --> Phish
-    
-    URL --> SandboxCtrl
-    SandboxCtrl -->|Isolated gRPC/HTTP| Playwright
-    
-    AgentSystem -->|Write Findings| PG
-    Worker -->|Update Risk| Risk
-    Risk -->|Generate Incident| PG
-    
-    Coord --> Resp
-    Resp -->|Recommend Block| PG
-    Incident -->|Approve/Reject| API
+    subgraph Synthesis [Evidence Fusion & Explainable Risk]
+        EF[Evidence Fusion & Graph Service]
+        RE[Deterministic 0-100 Risk Engine]
+        EX[Explainable Intelligence Engine]
+    end
+
+    subgraph Actions [SOC Incident & Mitigation]
+        INC[SOC Incident Queue]
+        RESP[Automated Response & Action Approval]
+        REP[Threat Intelligence Report JSON]
+    end
+
+    Inputs --> Preprocessing
+    Preprocessing --> Orchestration
+    T1 --> IP
+    IP --> Agents
+    A8 <--> ThreatIntel
+    ThreatIntel <--> RC
+    Agents --> Synthesis
+    RE -->|Score >= 40 or Suspicious Heuristics| Sandbox
+    Sandbox --> Synthesis
+    Synthesis --> Actions
 ```
 
-## Component Overview
+---
 
-### 1. Universal Input Processor
-The gateway to the system. It ingests arbitrary raw text, emails, URLs, or SMS messages, normalizes them, determines the underlying `InputType`, and kicks off an `Investigation`.
+## Key Subsystems
 
-### 2. Investigation Coordinator
-The autonomous engine of the SOC. It operates on an iterative loop:
-1. **Observe**: Read current findings from the database.
-2. **Reassess**: Compute a rolling risk score via the Risk Engine.
-3. **Plan**: Run the `InvestigationPlannerAgent` to dynamically route the payload to necessary intelligence agents.
-4. **Execute**: Dispatch Celery tasks.
+### 1. Universal Input Normalization & Extraction
+- Accepts arbitrary user inputs across 6 vectors (URLs, raw RFC822 EML emails, SMS texts, uploaded QR images/data URIs, Web Page HTML, and Social Media posts).
+- Normalizes canonical formats and extracts indicators of compromise (URLs, nested domains, IP addresses, email addresses, cryptographic hashes).
 
-### 3. Multi-Agent System
-A swarm of specialized Python classes inheriting from `BaseAgent`. Each agent evaluates a specific threat vector (e.g., `BrandImpersonationAgent` checks for logo spoofing).
-- Agents are executed asynchronously via **Celery**.
-- Agents write their observations as `Finding` records mapped to an `Investigation`.
+### 2. Autonomous Multi-Agent Orchestration
+- **Triage Agent:** Evaluates raw indicators and assigns priority (`P1_CRITICAL`, `P2_HIGH`, `P3_MEDIUM`, `P4_LOW`).
+- **Investigation Planner Agent:** Analyzes the target structure and dynamically schedules specialized workers.
+- **Concurrent Execution:** Dispatches agents concurrently via async event loop / Celery workers.
 
-### 4. Sandbox Controller (Untrusted Detonation)
-To safely evaluate zero-day links or suspected malware, ThreatLens implements a dedicated Sandbox environment (`aitam-sandbox-1`).
-- Uses **Playwright** inside a completely isolated container with no host-filesystem access.
-- Navigates to malicious URLs, records network intercepts, captures screenshots, and assesses DOM behavior.
+### 3. Real Threat Intelligence Providers & Redis Caching
+- **URLhaus (`abuse.ch`):** Direct API querying using secret backend API key (`URLHAUS_AUTH_KEY`).
+- **VirusTotal v3:** Correlates file hashes, domains, and IP reputations.
+- **Google Safe Browsing v4:** Checks malicious social engineering and malware lists.
+- **PostgreSQL Indicators Database:** Local indexed storage of confirmed threats.
+- **Redis Cache Layer:** In-memory caching with 3600-second TTL prevents rate limit exhaustion.
 
-### 5. Evidence Graph & Attack Journey
-Raw findings are distilled into an Evidence Graph, linking IOCs (Indicators of Compromise) to observed behaviors. The resulting graph is parsed into a human-readable **Attack Journey**, explaining exactly how the threat operates.
+### 4. Zero-Trust Playwright Sandbox
+- Suspicious URLs (risk score $\ge 40$ or evasive heuristics) are detonated inside an isolated headless browser container.
+- Captures DOM structure, console errors, network requests, redirects, and full-page visual screenshots without executing untrusted code on the host.
+
+### 5. Explainable Risk Engine & Evidence Fusion
+- Maps multi-agent evidence into a normalized graph.
+- Calculates an explainable 0–100 risk score:
+  - `0 - 19`: **SAFE**
+  - `20 - 39`: **LOW**
+  - `40 - 59`: **MEDIUM / SUSPICIOUS**
+  - `60 - 79`: **HIGH**
+  - `80 - 100`: **CRITICAL**
+  - Missing or unverified data defaults strictly to **UNKNOWN**.
+- Produces evidence-based "Why is this risky?" explanations and actionable mitigation steps.
