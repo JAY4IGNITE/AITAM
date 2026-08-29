@@ -194,6 +194,96 @@ async def delete_temporary_inbox(
     await db.commit()
     return {"status": "DELETED", "inbox_id": inbox_id}
 
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from pydantic import BaseModel, Field
+
+class AutoInvestigateRequest(BaseModel):
+    email_address: Optional[str] = None
+    inbox_id: Optional[str] = None
+    timeout_seconds: int = Field(default=120, ge=10, le=600)
+
+class MailboxValidationRequest(BaseModel):
+    email_address: str
+
+@router.post("/validate-mailbox")
+async def validate_mailbox_endpoint(req: MailboxValidationRequest):
+    """Validates disposable mailbox syntax, domain structure, and provider support."""
+    return TempMailIngestionService.validate_mailbox(req.email_address)
+
+@router.post("/auto-investigate")
+async def start_auto_investigation(
+    req: AutoInvestigateRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    One-Click Fully Automated Phishing Pipeline:
+    1. Validates mailbox and registers in database if new.
+    2. Immediately checks for any existing uninvestigated email messages.
+    3. If none present, launches background watchdog monitoring mailbox up to timeout window.
+    4. Automatically ingests arriving emails, extracts URLs, parses headers, runs multi-agent swarm,
+       checks Safe Browsing, calculates risk, and generates forensic threat report.
+    """
+    email = req.email_address
+    inbox_id = req.inbox_id
+    
+    if not email and not inbox_id:
+        raise HTTPException(status_code=400, detail="Either email_address or inbox_id must be provided")
+
+    inbox = None
+    if inbox_id:
+        inbox = (await db.execute(select(TempMailInbox).where(TempMailInbox.inbox_id == inbox_id))).scalar_one_or_none()
+    elif email:
+        inbox = (await db.execute(select(TempMailInbox).where(TempMailInbox.email_address == email))).scalar_one_or_none()
+
+    if not inbox and email:
+        val = TempMailIngestionService.validate_mailbox(email)
+        if not val.get("valid"):
+            raise HTTPException(status_code=400, detail=val.get("error", "Invalid mailbox format"))
+        
+        domain = val["domain"]
+        inbox_id = inbox_id or uuid.uuid4().hex[:16]
+        inbox = TempMailInbox(
+            inbox_id=inbox_id,
+            email_address=email.lower().strip(),
+            domain=domain,
+            status="ACTIVE"
+        )
+        db.add(inbox)
+        await db.commit()
+        await db.refresh(inbox)
+
+    if not inbox:
+        raise HTTPException(status_code=404, detail="Could not find or provision temporary inbox")
+
+    # 1. Check if email is already waiting in the inbox
+    res = await TempMailIngestionService.poll_inbox(inbox.inbox_id, db)
+    if res.get("new_messages_count", 0) > 0:
+        inv_id = res.get("investigations_dispatched", [None])[0]
+        return {
+            "status": "EMAIL_RECEIVED",
+            "inbox_id": inbox.inbox_id,
+            "email_address": inbox.email_address,
+            "investigation_id": inv_id,
+            "message": "Existing email detected and multi-agent investigation dispatched immediately."
+        }
+
+    # 2. Launch background watchdog
+    background_tasks.add_task(
+        TempMailIngestionService.watch_and_auto_investigate,
+        inbox.inbox_id,
+        req.timeout_seconds,
+        3.0
+    )
+
+    return {
+        "status": "WAITING_FOR_EMAIL",
+        "inbox_id": inbox.inbox_id,
+        "email_address": inbox.email_address,
+        "timeout_seconds": req.timeout_seconds,
+        "message": f"Autonomous watchdog active. Monitoring {inbox.email_address} for incoming phishing email..."
+    }
+
 @router.get("/health", response_model=TempMailHealthStatus)
 async def get_tempmail_health(
     db: AsyncSession = Depends(get_db)
@@ -213,3 +303,4 @@ async def get_tempmail_health(
         last_checked=datetime.utcnow(),
         error=health.get("error")
     )
+

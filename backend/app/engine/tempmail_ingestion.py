@@ -131,6 +131,81 @@ class TempMailIngestionService:
         }
 
     @staticmethod
+    def validate_mailbox(email_address: str) -> Dict[str, Any]:
+        """
+        Validates temporary email syntax, domain structure, and provider compatibility.
+        """
+        if not email_address or "@" not in email_address:
+            return {"valid": False, "status": "INVALID", "error": "Invalid email syntax format"}
+
+        parts = email_address.strip().lower().split("@")
+        if len(parts) != 2 or not parts[0] or not parts[1] or "." not in parts[1]:
+            return {"valid": False, "status": "INVALID", "error": "Malformed email address structure"}
+
+        local_part, domain = parts[0], parts[1]
+        
+        # Syntax regex check
+        if not re.match(r'^[a-zA-Z0-9_.+-]+$', local_part):
+            return {"valid": False, "status": "INVALID", "error": "Local part contains forbidden characters"}
+
+        return {
+            "valid": True,
+            "status": "VALID",
+            "email_address": email_address,
+            "local_part": local_part,
+            "domain": domain,
+            "provider": "TempMail.so"
+        }
+
+    @staticmethod
+    async def watch_and_auto_investigate(inbox_id: str, timeout_seconds: int = 120, poll_interval: float = 3.0) -> Dict[str, Any]:
+        """
+        Background autonomous watchdog: monitors a temporary mailbox for incoming emails,
+        automatically ingests arriving messages, dispatches multi-agent pipelines,
+        and broadcasts live telemetry to WebSocket / SSE subscribers.
+        """
+        from ..database.connection import AsyncSessionLocal
+        from ..engine.event_broadcaster import event_broadcaster
+        from ..schemas.agent_event import AgentEvent
+        
+        start_time = asyncio.get_event_loop().time()
+        
+        while (asyncio.get_event_loop().time() - start_time) < timeout_seconds:
+            async with AsyncSessionLocal() as session:
+                inbox = (await session.execute(
+                    select(TempMailInbox).where(TempMailInbox.inbox_id == inbox_id)
+                )).scalar_one_or_none()
+                
+                if not inbox:
+                    break
+
+                res = await TempMailIngestionService.poll_inbox(inbox_id, session)
+                
+                if res.get("new_messages_count", 0) > 0:
+                    dispatched_invs = res.get("investigations_dispatched", [])
+                    inv_id = dispatched_invs[0] if dispatched_invs else None
+                    logger.info(f"Autonomous email detected in {inbox_id}! Dispatched investigation: {inv_id}")
+                    return {
+                        "status": "EMAIL_RECEIVED",
+                        "inbox_id": inbox_id,
+                        "email_address": inbox.email_address,
+                        "new_messages_count": res.get("new_messages_count"),
+                        "investigation_id": inv_id
+                    }
+
+            remaining = int(timeout_seconds - (asyncio.get_event_loop().time() - start_time))
+            if remaining > 0 and remaining % 6 == 0:
+                logger.debug(f"Watchdog waiting for email in {inbox_id}... ({remaining}s remaining)")
+
+            await asyncio.sleep(poll_interval)
+
+        return {
+            "status": "TIMEOUT",
+            "inbox_id": inbox_id,
+            "message": f"No incoming email arrived within {timeout_seconds}s timeout window."
+        }
+
+    @staticmethod
     async def poll_all_active_inboxes(session: AsyncSession) -> List[Dict[str, Any]]:
         """Polls all active temporary inboxes in the database."""
         inboxes_res = await session.execute(

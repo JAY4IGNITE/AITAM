@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 import json
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from app.schemas.agent_event import AgentEvent
 from app.engine.event_broadcaster import event_broadcaster, EventBroadcaster
 from app.services.safe_browsing import SafeBrowsingService

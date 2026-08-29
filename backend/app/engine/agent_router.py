@@ -8,13 +8,14 @@ def get_agents_for_input(input_type: InputType) -> list:
     from ..agents.threat_intel import ThreatIntelligenceAgent
     from ..agents.phishing_agent import PhishingDetectionAgent
     from ..agents.email_agent import EmailIntelligenceAgent
+    from ..agents.attachment_agent import AttachmentAnalysisAgent
     from ..agents.sms_agent import SMSIntelligenceAgent
     from ..agents.social_agent import SocialMessageIntelligenceAgent
     from ..agents.qr_processor import QRCodeProcessor
     
     routes = {
         InputType.URL: [URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
-        InputType.EMAIL: [EmailIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
+        InputType.EMAIL: [EmailIntelligenceAgent, AttachmentAnalysisAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
         InputType.SMS: [SMSIntelligenceAgent, ContentIntelligenceAgent, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
         InputType.QR: [QRCodeProcessor, URLIntelligenceAgent, BrandImpersonationAgent, ThreatIntelligenceAgent, PhishingDetectionAgent],
         InputType.WEBPAGE: [URLIntelligenceAgent, ThreatIntelligenceAgent], # Sandbox is handled implicitly via Orchestrator risk

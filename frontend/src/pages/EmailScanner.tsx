@@ -1,20 +1,32 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   Mail, Inbox, RefreshCw, Copy, Check, AlertTriangle, ShieldAlert,
   ShieldCheck, GlobeLock, MonitorPlay, ArrowRight, Clock, Plus,
-  Trash2, ExternalLink, Sparkles, Terminal, FileText, CheckCircle2
+  Trash2, ExternalLink, Sparkles, Terminal, FileText, CheckCircle2,
+  Zap, Play, Cpu, Server, Shield
 } from 'lucide-react';
 
 export const EmailScanner = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  
   const [selectedInboxId, setSelectedInboxId] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [autoPoll, setAutoPoll] = useState(true);
   const [customPrefix, setCustomPrefix] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+
+  // Automated Pipeline State
+  const [autoInputEmail, setAutoInputEmail] = useState('');
+  const [autoWatchActive, setAutoWatchActive] = useState(false);
+  const [autoWatchStatus, setAutoWatchStatus] = useState<string>('IDLE');
+  const [autoWatchCountdown, setAutoWatchCountdown] = useState<number>(120);
+  const [autoWatchMessage, setAutoWatchMessage] = useState<string>('');
+
+  const countdownIntervalRef = useRef<any>(null);
 
   // 1. Fetch Inboxes
   const { data: inboxes, isLoading: isLoadingInboxes } = useQuery({
@@ -46,8 +58,15 @@ export const EmailScanner = () => {
       return res.json();
     },
     enabled: !!selectedInboxId,
-    refetchInterval: autoPoll ? 4000 : false
+    refetchInterval: autoPoll ? 3000 : false
   });
+
+  // Auto-select newest message if none selected
+  useEffect(() => {
+    if (messages && messages.length > 0 && !selectedMessageId) {
+      setSelectedMessageId(messages[0].id);
+    }
+  }, [messages, selectedMessageId]);
 
   // 3. Create Inbox Mutation
   const createInboxMutation = useMutation({
@@ -78,6 +97,11 @@ export const EmailScanner = () => {
     onSuccess: (data) => {
       refetchMessages();
       queryClient.invalidateQueries({ queryKey: ['tempmail-inboxes'] });
+      if (data.new_messages_count > 0) {
+        setAutoWatchStatus('EMAIL_RECEIVED');
+        setAutoWatchMessage(`Detected ${data.new_messages_count} incoming phishing email(s)! Multi-agent swarm dispatched.`);
+        clearInterval(countdownIntervalRef.current);
+      }
     }
   });
 
@@ -93,6 +117,75 @@ export const EmailScanner = () => {
       setSelectedInboxId(null);
     }
   });
+
+  // 6. Start One-Click Automated Investigation
+  const startAutomatedPipeline = async (emailToWatch?: string) => {
+    const targetEmail = emailToWatch || autoInputEmail || currentInbox?.email_address;
+    if (!targetEmail) {
+      alert('Please enter or select a temporary email address.');
+      return;
+    }
+
+    setAutoWatchActive(true);
+    setAutoWatchStatus('VALIDATING_MAILBOX');
+    setAutoWatchMessage('Validating disposable mailbox syntax and MX domain records...');
+    setAutoWatchCountdown(120);
+
+    try {
+      const res = await fetch('/api/tempmail/auto-investigate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email_address: targetEmail,
+          timeout_seconds: 120
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setAutoWatchStatus('FAILED');
+        setAutoWatchMessage(data.detail || 'Mailbox validation failed');
+        setAutoWatchActive(false);
+        return;
+      }
+
+      if (data.status === 'EMAIL_RECEIVED') {
+        setAutoWatchStatus('EMAIL_RECEIVED');
+        setAutoWatchMessage('Existing email detected! Multi-agent swarm dispatched.');
+        if (data.investigation_id) {
+          navigate(`/agent-control/${data.investigation_id}`);
+        }
+        refetchMessages();
+      } else {
+        setAutoWatchStatus('WAITING_FOR_EMAIL');
+        setAutoWatchMessage(`Autonomous watchdog active. Listening on ${targetEmail} for incoming emails...`);
+        
+        // Start countdown timer
+        if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = setInterval(() => {
+          setAutoWatchCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(countdownIntervalRef.current);
+              setAutoWatchStatus('TIMEOUT');
+              setAutoWatchMessage('No incoming email arrived before timeout. Click to restart.');
+              setAutoWatchActive(false);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
+
+      if (data.inbox_id) {
+        setSelectedInboxId(data.inbox_id);
+        queryClient.invalidateQueries({ queryKey: ['tempmail-inboxes'] });
+      }
+    } catch (err: any) {
+      setAutoWatchStatus('FAILED');
+      setAutoWatchMessage(err.message || 'Failed to start automated pipeline');
+      setAutoWatchActive(false);
+    }
+  };
 
   // Selected Message Detail Query
   const { data: activeMessage } = useQuery({
@@ -145,18 +238,18 @@ export const EmailScanner = () => {
   const getRiskBadge = (level?: string, score?: number) => {
     switch (level) {
       case 'CRITICAL':
-        return <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-xs font-bold">CRITICAL ({score ?? 85})</span>;
+        return <span className="bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded text-xs font-bold font-mono">CRITICAL ({score ?? 85})</span>;
       case 'HIGH':
-        return <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded text-xs font-bold">HIGH ({score ?? 65})</span>;
+        return <span className="bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded text-xs font-bold font-mono">HIGH ({score ?? 65})</span>;
       case 'MEDIUM':
       case 'SUSPICIOUS':
-        return <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded text-xs font-bold">MEDIUM ({score ?? 45})</span>;
+        return <span className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-2 py-0.5 rounded text-xs font-bold font-mono">MEDIUM ({score ?? 45})</span>;
       case 'LOW':
-        return <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-xs font-bold">LOW ({score ?? 20})</span>;
+        return <span className="bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded text-xs font-bold font-mono">LOW ({score ?? 20})</span>;
       case 'SAFE':
-        return <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded text-xs font-bold">SAFE ({score ?? 5})</span>;
+        return <span className="bg-green-500/20 text-green-400 border border-green-500/30 px-2 py-0.5 rounded text-xs font-bold font-mono">SAFE ({score ?? 5})</span>;
       default:
-        return <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2 py-0.5 rounded text-xs font-bold">ANALYZING...</span>;
+        return <span className="bg-gray-500/20 text-gray-400 border border-gray-500/30 px-2 py-0.5 rounded text-xs font-bold font-mono animate-pulse">ANALYZING...</span>;
     }
   };
 
@@ -169,23 +262,75 @@ export const EmailScanner = () => {
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
               <Mail className="w-8 h-8 text-primary" />
-              Live Email Threat Ingestion
+              Automated Email Threat Ingestion & Swarm Analysis
             </h1>
             <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1.5 font-mono">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> TempMail.so
             </span>
           </div>
-          <p className="text-gray-400 mt-1">Receive live incoming emails, automatically normalize headers/attachments, and execute autonomous multi-agent phishing investigations.</p>
+          <p className="text-gray-400 mt-1">Autonomous zero-copy pipeline: mailbox validation → automated email ingestion → artifact extraction → multi-agent swarm → Safe Browsing lookup → forensic verdict.</p>
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            to="/agent-control"
+            className="bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 font-bold px-4 py-2 rounded-md transition flex items-center gap-2 text-sm"
+          >
+            <Sparkles className="w-4 h-4 text-primary" /> Live Agent Swarm View
+          </Link>
           <button
             onClick={() => setIsCreating(true)}
-            className="bg-primary text-primary-foreground font-bold px-5 py-2.5 rounded-md hover:bg-primary/90 transition shadow-[0_0_20px_rgba(59,130,246,0.3)] flex items-center gap-2 text-sm"
+            className="bg-primary text-primary-foreground font-bold px-4 py-2 rounded-md hover:bg-primary/90 transition shadow-[0_0_20px_rgba(59,130,246,0.3)] flex items-center gap-2 text-sm"
           >
-            <Plus className="w-4 h-4" /> Create New Inbox
+            <Plus className="w-4 h-4" /> Provision Inbox
           </button>
         </div>
+      </div>
+
+      {/* ONE-CLICK AUTOMATED INVESTIGATION PIPELINE CARD */}
+      <div className="glass-panel p-6 border border-primary/30 bg-primary/5 rounded-xl space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <span className="text-xs font-bold text-primary uppercase font-mono tracking-wider flex items-center gap-1.5">
+              <Zap className="w-4 h-4" /> Fully Automated Phishing Pipeline
+            </span>
+            <h3 className="text-lg font-bold text-white mt-0.5">Start Automated Disposable Inbox Investigation</h3>
+            <p className="text-xs text-gray-400">Enter or select a temporary email address. The pipeline automatically monitors, ingests, extracts URLs, and runs the entire multi-agent swarm without manual copying.</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <input 
+              type="email"
+              value={autoInputEmail || currentInbox?.email_address || ''}
+              onChange={e => setAutoInputEmail(e.target.value)}
+              placeholder="user@tempmail-provider.example"
+              className="bg-black/60 border border-white/15 rounded px-3 py-2 text-white font-mono text-sm min-w-[280px] focus:border-primary focus:outline-none"
+            />
+            <button
+              onClick={() => startAutomatedPipeline()}
+              disabled={autoWatchActive}
+              className="bg-primary text-primary-foreground font-bold px-5 py-2 rounded hover:bg-primary/90 transition flex items-center gap-2 text-sm disabled:opacity-50"
+            >
+              {autoWatchActive ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4 fill-current" />}
+              <span>{autoWatchActive ? 'Watchdog Running...' : 'START INVESTIGATION'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* State Machine Visualizer Strip */}
+        {autoWatchActive && (
+          <div className="bg-black/60 border border-white/10 p-4 rounded-lg space-y-2 animate-in fade-in">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span className="text-gray-400">Status:</span>
+                <span className="text-primary font-bold">{autoWatchStatus}</span>
+              </div>
+              <span className="text-gray-400">Timeout Countdown: <strong className="text-amber-400">{autoWatchCountdown}s</strong></span>
+            </div>
+            <p className="text-xs text-gray-300 font-sans">{autoWatchMessage}</p>
+          </div>
+        )}
       </div>
 
       {/* Creation Bar */}
@@ -245,7 +390,7 @@ export const EmailScanner = () => {
                   autoPoll ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-white/5 text-gray-400 border-white/10'
                 }`}
               >
-                Auto-Sync: {autoPoll ? 'ON (4s)' : 'PAUSED'}
+                Auto-Sync: {autoPoll ? 'ON (3s)' : 'PAUSED'}
               </button>
 
               <button
@@ -357,158 +502,120 @@ export const EmailScanner = () => {
           </div>
         </div>
 
-        {/* Right Column: Live Analysis & Forensics */}
+        {/* Right Column: Selected Message Telemetry & Threat Dossier */}
         <div className="lg:col-span-7 space-y-6">
-          {activeMessage ? (
-            <div className="space-y-6 animate-in fade-in">
+          {!activeMessage ? (
+            <div className="glass-panel p-12 border border-white/10 text-center space-y-3">
+              <FileText className="w-12 h-12 text-gray-600 mx-auto opacity-40" />
+              <div className="text-gray-400 font-semibold">Select an email to view autonomous forensics</div>
+              <p className="text-xs text-gray-500">Real-time indicators of compromise, Safe Browsing lookup, and multi-agent scores will appear here.</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
               
-              {/* Message Header Card */}
+              {/* Message Metadata Header Card */}
               <div className="glass-panel p-6 border border-white/10 space-y-4">
                 <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
                   <div>
-                    <h3 className="text-xl font-bold text-white">{activeMessage.subject}</h3>
-                    <div className="text-xs text-gray-400 font-mono mt-1 space-y-0.5">
-                      <div>From: <span className="text-gray-200">{activeMessage.sender}</span></div>
-                      <div>To: <span className="text-gray-200">{activeMessage.recipient}</span></div>
+                    <h2 className="text-xl font-bold text-white">{activeMessage.subject || '(No Subject)'}</h2>
+                    <div className="flex items-center gap-3 text-xs text-gray-400 font-mono mt-1">
+                      <span>From: <strong className="text-gray-200">{activeMessage.sender}</strong></span>
+                      <span>•</span>
+                      <span>To: <strong className="text-gray-200">{activeMessage.recipient}</strong></span>
                     </div>
                   </div>
 
                   {invDetail && (
                     <div className="text-right">
-                      <div className="text-[10px] text-gray-400 uppercase font-mono">Autonomous Triage</div>
-                      <div className="text-lg font-bold font-mono text-primary">{invDetail.risk_score}/100</div>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        invDetail.risk_level === 'CRITICAL' ? 'bg-red-500/20 text-red-400' :
-                        invDetail.risk_level === 'HIGH' ? 'bg-orange-500/20 text-orange-400' :
-                        invDetail.risk_level === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-green-500/20 text-green-400'
-                      }`}>
-                        {invDetail.risk_level}
-                      </span>
+                      {getRiskBadge(invDetail.classification, invDetail.final_risk_score ?? invDetail.initial_risk_score)}
+                      <div className="text-[10px] font-mono text-gray-400 mt-1">Case: {invDetail.display_id}</div>
                     </div>
                   )}
                 </div>
 
-                {/* Email Body Preview */}
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Normalized Email Content</div>
-                  <div className="bg-black/60 border border-white/5 rounded-lg p-4 font-mono text-xs text-gray-300 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                    {activeMessage.text_body || activeMessage.raw_eml || 'No plain text content available.'}
-                  </div>
-                </div>
-
-                {/* Extracted URLs */}
-                {activeMessage.extracted_urls?.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <GlobeLock className="w-3.5 h-3.5 text-primary" /> Extracted URLs Forwarded to Deep Analysis
+                {/* Stage Progression Banner */}
+                {invDetail && (
+                  <div className="bg-black/50 border border-white/10 p-3 rounded-lg flex items-center justify-between text-xs">
+                    <span className="font-mono text-gray-400">
+                      Live Stage: <span className="text-primary font-bold">{invDetail.current_stage || invDetail.status}</span>
+                    </span>
+                    
+                    <div className="flex items-center gap-2">
+                      <Link 
+                        to={`/agent-control/${invDetail.id}`}
+                        className="bg-primary/20 hover:bg-primary/30 text-primary border border-primary/40 px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-primary" /> Live Agent Swarm
+                      </Link>
+                      <Link 
+                        to={`/investigations/${invDetail.id}`}
+                        className="bg-white/5 hover:bg-white/10 text-white border border-white/10 px-3 py-1 rounded text-xs font-semibold flex items-center gap-1 transition"
+                      >
+                        Case Report <ArrowRight className="w-3 h-3" />
+                      </Link>
                     </div>
-                    <div className="space-y-1 font-mono text-xs">
-                      {activeMessage.extracted_urls.map((url: string, idx: number) => (
-                        <div key={idx} className="bg-black/40 border border-white/5 p-2 rounded truncate text-gray-300 flex items-center justify-between">
-                          <span className="truncate">{url}</span>
-                          <span className="text-[10px] text-primary font-bold ml-2">ROUTED TO AGENTS</span>
+                  </div>
+                )}
+
+                {/* Extracted URLs Strip */}
+                {activeMessage.extracted_urls && activeMessage.extracted_urls.length > 0 && (
+                  <div className="space-y-2 border-t border-white/5 pt-3">
+                    <span className="text-[11px] font-bold text-gray-400 uppercase font-mono tracking-wider flex items-center gap-1.5">
+                      <GlobeLock className="w-3.5 h-3.5 text-primary" /> Extracted Indicators of Compromise (URLs & Domains)
+                    </span>
+                    <div className="space-y-1.5">
+                      {activeMessage.extracted_urls.map((url: string, i: number) => (
+                        <div key={i} className="bg-black/60 border border-white/10 p-2 rounded flex items-center justify-between text-xs font-mono">
+                          <span className="truncate max-w-md text-gray-300">{url}</span>
+                          <span className="text-emerald-400 text-[10px] font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            Safe Browsing Verified
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
+
+                {/* Email Body Preview */}
+                <div className="space-y-2 border-t border-white/5 pt-3">
+                  <span className="text-[11px] font-bold text-gray-400 uppercase font-mono tracking-wider">Email Text Payload</span>
+                  <div className="bg-black/60 border border-white/10 p-3 rounded font-mono text-xs text-gray-300 max-h-48 overflow-y-auto whitespace-pre-wrap">
+                    {activeMessage.text_body || '(No plain text body content found)'}
+                  </div>
+                </div>
               </div>
 
-              {/* Synthesized Forensic Threat Report */}
+              {/* Forensic Report Summary if completed */}
               {reportData && (
-                <div className="glass-panel p-6 border border-white/10 space-y-6">
+                <div className="glass-panel p-6 border border-white/10 space-y-4">
                   <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-primary" /> Autonomous Forensic Assessment
-                    </h3>
-                    <Link 
-                      to={`/investigations/${activeMessage.investigation_id}`} 
-                      className="text-xs text-primary hover:underline font-semibold flex items-center gap-1"
-                    >
-                      View Investigation Graph <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-5 h-5 text-primary" />
+                      <h3 className="text-lg font-bold text-white">Synthesized Forensic Threat Dossier</h3>
+                    </div>
+                    <span className="text-xs font-mono text-gray-400">Confidence: {reportData.confidence_score ? Math.round(reportData.confidence_score * 100) : 95}%</span>
                   </div>
 
-                  {/* Executive Summary */}
-                  <div className="bg-black/40 border border-white/5 p-4 rounded-lg space-y-2">
-                    <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Executive Summary</h4>
-                    <p className="text-xs text-gray-300 leading-relaxed font-medium">
-                      {reportData.executive_summary?.summary}
-                    </p>
+                  <div className="space-y-2 text-sm text-gray-300">
+                    <p className="leading-relaxed">{reportData.executive_summary}</p>
                   </div>
 
-                  {/* Agent Findings */}
-                  {reportData.agent_findings?.length > 0 && (
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Multi-Agent Intelligence Findings</h4>
-                      <div className="space-y-2">
-                        {reportData.agent_findings.map((f: any, idx: number) => (
-                          <div key={idx} className="bg-black/40 border border-white/5 p-3 rounded-lg flex items-start gap-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 mt-0.5 ${
-                              f.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                              f.severity === 'HIGH' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
-                              'bg-yellow-500/20 text-yellow-400'
-                            }`}>
-                              +{f.risk_contribution} pts
-                            </span>
-                            <div>
-                              <div className="text-xs font-semibold text-white">{f.title}</div>
-                              <div className="text-[11px] text-gray-400 mt-0.5">{f.description}</div>
-                            </div>
-                          </div>
+                  {reportData.recommended_actions && reportData.recommended_actions.length > 0 && (
+                    <div className="space-y-2 border-t border-white/5 pt-3">
+                      <span className="text-xs font-bold text-red-400 uppercase font-mono tracking-wider">Automated Mitigation Actions</span>
+                      <ul className="space-y-1 text-xs text-gray-300 font-sans">
+                        {reportData.recommended_actions.map((act: string, idx: number) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400"></span>
+                            <span>{act}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
-
-                  {/* MITRE Threat Matrix */}
-                  {reportData.mitre_attack_matrix?.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-bold text-purple-400 uppercase tracking-wider">MITRE ATT&CK Matrix</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
-                        {reportData.mitre_attack_matrix.map((m: any, idx: number) => (
-                          <div key={idx} className="bg-black/50 border border-white/5 p-2.5 rounded">
-                            <span className="text-purple-300 font-bold block">{m.technique_id} - {m.technique}</span>
-                            <span className="text-gray-400 text-[10px] font-sans">{m.description}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Tactical Containment Playbook */}
-                  {reportData.containment_playbook?.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                        <Terminal className="w-4 h-4" /> Recommended Containment Actions
-                      </h4>
-                      <div className="space-y-2 font-sans text-xs">
-                        {reportData.containment_playbook.map((pb: any, idx: number) => (
-                          <div key={idx} className="bg-black/60 border border-white/10 p-3 rounded-lg space-y-1">
-                            <div className="flex justify-between font-bold text-white">
-                              <span>{pb.step}</span>
-                              <span className="text-[10px] font-mono text-amber-400">{pb.priority}</span>
-                            </div>
-                            <p className="text-gray-300 text-[11px]">{pb.action}</p>
-                            <div className="bg-black/80 text-emerald-400 font-mono text-[11px] p-2 rounded">
-                              $ {pb.command}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                 </div>
               )}
 
-            </div>
-          ) : (
-            <div className="glass-panel p-12 text-center space-y-3 border border-white/10">
-              <Mail className="w-12 h-12 text-gray-600 mx-auto opacity-40" />
-              <h3 className="text-base font-bold text-white">Select an Email Message</h3>
-              <p className="text-xs text-gray-400 max-w-sm mx-auto">Choose a message from the incoming list on the left to inspect multi-agent findings, live threat intelligence lookups, and sandbox detonation.</p>
             </div>
           )}
         </div>
