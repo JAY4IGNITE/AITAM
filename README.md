@@ -1,63 +1,129 @@
-# ThreatLens - Autonomous Multi-Agent SOC Platform
+<div align="center">
+  <img src="https://via.placeholder.com/150/09090b/ffffff?text=ThreatLens" alt="ThreatLens Logo" width="120" height="120" />
+  <h1>ThreatLens</h1>
+  <p><strong>Autonomous Multi-Agent Security Operations Center (SOC)</strong></p>
 
-ThreatLens is a state-of-the-art, autonomous, multi-agent Security Operations Center (SOC) designed to ingest, investigate, and respond to cybersecurity threats across diverse input vectors (URLs, SMS, Emails, QR codes, Social Media). 
+  [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
+  [![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0+-00a393.svg)](https://fastapi.tiangolo.com)
+  [![React](https://img.shields.io/badge/React-18.x-61dafb.svg)](https://react.dev)
+  [![Supabase](https://img.shields.io/badge/Database-Supabase-3ECF8E.svg)](https://supabase.com/)
+  [![Render](https://img.shields.io/badge/Deploy-Render-46E3B7.svg)](https://render.com/)
+</div>
 
-Built as a Hackathon project, it demonstrates an LLM-driven architecture that can triage alerts, orchestrate independent intelligence agents, detonate suspicious payloads in isolated environments, and formulate actionable response recommendations for human analysts.
+---
 
-## Key Features
+## 🚀 Overview
 
-- **Universal Input Processor**: Accepts any type of input (URLs, raw text, emails, QR codes) and normalizes it for analysis.
-- **Autonomous Multi-Agent Architecture**: Uses an Investigation Coordinator to dynamically spawn agents (URL Intelligence, Threat Intelligence, Sandbox, Phishing Detection) based on the input risk level.
-- **Explainable Evidence Graph**: Maps the relationships between extracted IOCs, agent observations, and threat intelligence into an "Attack Journey" that explains *how* and *why* a threat is dangerous.
-- **Isolated Detonation Sandbox**: Spins up a headless Playwright instance in an untrusted Docker container (`aitam-sandbox-1`) to safely evaluate zero-day threats.
-- **Professional SOC Interface**: A stunning, dark-mode, high-density React dashboard designed for security professionals to review incidents and approve response actions.
+**ThreatLens** is a state-of-the-art, autonomous, multi-agent Security Operations Center (SOC) designed to automatically ingest, investigate, and respond to complex cybersecurity threats across diverse input vectors (URLs, SMS, Emails, QR codes, Social Media).
 
-## Quick Start
+Built to drastically reduce Tier-1 SOC analyst workload, ThreatLens orchestrates specialized AI agents that independently triage alerts, gather threat intelligence, detonate suspicious payloads in isolated environments, and map findings to the **MITRE ATT&CK® Enterprise Matrix**.
+
+> [!IMPORTANT]
+> **Production Ready:** ThreatLens is fully migrated to **Supabase** for database management and is ready for 1-click cloud deployment on **Render**.
+
+---
+
+## ✨ Key Capabilities
+
+| Capability | Description |
+| :--- | :--- |
+| **Universal Input Processor** | Ingests URLs, raw text, phishing emails, QR payloads, and normalizes them for unified analysis. |
+| **Autonomous Multi-Agent Hive** | Dynamic orchestration of specialized agents: URL Intelligence, Sender Reputation, Attachment Sandbox, and Social Engineering Analysis. |
+| **Live Email Ingestion** | Fully automated integration with **TempMail.so**. ThreatLens provisions temporary inboxes, intercepts real live emails, and triggers instant investigations. |
+| **MITRE ATT&CK® Integration** | Automatically maps identified adversary tactics and techniques to the MITRE framework for standardized reporting. |
+| **Explainable Evidence Graph** | Constructs a visual "Attack Journey" mapping relationships between extracted IOCs, agent observations, and final risk scores. |
+| **Dark-Mode SOC Dashboard** | High-density, professional Antigravity monochrome design system (`#09090b` blacks, `#ffffff` whites) optimized for security analysts. |
+
+---
+
+## 🏗️ Architecture & Flow
+
+1. **Ingestion Layer:** Accepts threat vectors via REST API or intercepts live emails.
+2. **Triage Agent:** Analyzes the raw input, normalizes data, and determines the initial risk severity.
+3. **Investigation Coordinator:** Dynamically spawns parallel worker agents based on the payload type (e.g., dispatching the URL Agent to VirusTotal and the Sandbox Agent to execute malicious scripts).
+4. **Data Aggregation:** Agents write findings, IOCs (Indicators of Compromise), and evidence nodes directly to the Supabase PostgreSQL database.
+5. **Reporting & Action:** Generates Markdown/JSON forensic dossiers and automated YARA/Suricata rules.
+
+---
+
+## 🛠️ Technology Stack
+
+- **Backend / Core Engine:** Python 3.11, FastAPI, SQLAlchemy (Async), asyncpg.
+- **Database:** PostgreSQL (Hosted on **Supabase** with PgBouncer connection pooling).
+- **Task Queue & Caching:** Redis, Celery (optional async mode).
+- **Frontend SOC Interface:** React 18, Vite, Tailwind CSS (Antigravity monochrome design), Lucide Icons, React Router.
+- **Sandbox Detonation:** Headless Playwright (Chromium) operating inside isolated Docker containers.
+- **Threat Intel Integrations:** Google Safe Browsing, VirusTotal, URLhaus.
+
+---
+
+## 📦 Local Installation & Setup
 
 ### 1. Prerequisites
-- Docker and Docker Compose
-- Node.js (for local frontend development)
-- Python 3.10+ (for local backend development)
+- [Docker](https://www.docker.com/) and Docker Compose
+- [Node.js](https://nodejs.org/) (v20+)
+- [Supabase Account](https://supabase.com/)
 
-### 2. Run the Stack (Docker)
+### 2. Configure Environment Setup
+Clone the repository and configure your `.env` file based on `.env.example`:
 
 ```bash
-docker-compose up -d --build
+cp .env.example .env
 ```
 
-This will spin up:
-- PostgreSQL (`postgres:5432`)
-- Redis (`redis:6379`)
-- ThreatLens API (`localhost:8000`)
-- ThreatLens Celery Worker (Background tasks)
-- ThreatLens Detonation Sandbox (`aitam-sandbox-1`)
+Ensure your `DATABASE_URL` is configured for your Supabase transaction pooler:
+```ini
+DATABASE_URL=postgresql://postgres.crrlmgpdzatcwdpvunte:[YOUR-PASSWORD]@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres
+```
 
-### 3. Start the Frontend (Local)
+### 3. Start the Backend via Docker
+```bash
+docker compose up -d --build
+```
+*Note: The backend application automatically creates and synchronizes all 32 required database tables on your Supabase instance during startup.*
 
+### 4. Start the Frontend Application
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Access the SOC Dashboard at `http://localhost:3000`.
 
-The SOC Dashboard will be available at `http://localhost:5173`.
+---
 
-## Documentation
+## ☁️ Cloud Deployment (Render)
 
-- [System Architecture](docs/ARCHITECTURE.md)
-- [Hackathon Demo Guide](docs/HACKATHON_DEMO.md)
+ThreatLens is optimized for a seamless, unified deployment on [Render](https://render.com/).
 
-## Tech Stack
+### Option A: One-Click Blueprint
+We provide a `render.yaml` blueprint for instant cloud deployment.
+1. Connect your repository to Render.
+2. Choose **New +** > **Blueprint**.
+3. Supply your Supabase `DATABASE_URL` and Threat Intel API keys when prompted.
+4. Render will automatically provision both the `threatlens-api` and `threatlens-ui` services.
 
-- **Backend**: FastAPI, SQLAlchemy (Async), PostgreSQL
-- **Task Queue**: Celery + Redis
-- **Agents/LLM**: Simulated dynamic LLM intelligence via autonomous Python agents
-- **Frontend**: React (Vite), Tailwind CSS, React Query, Lucide Icons
-- **Sandbox**: Headless Playwright (Chromium)
+### Option B: Manual Setup
+Please refer to the detailed [DEPLOY_RENDER.md](DEPLOY_RENDER.md) guide included in this repository.
 
-## Hackathon Mode
-To reset the system state for a live demonstration, use the demo endpoints:
-```bash
-POST /api/demo/reset
-POST /api/demo/run
-```
+---
+
+## 🛡️ Live Threat Intel Providers
+
+To utilize the full multi-agent capabilities, acquire API keys for:
+- [Google Safe Browsing](https://developers.google.com/safe-browsing)
+- [VirusTotal API](https://www.virustotal.com/)
+- [URLhaus API](https://urlhaus.abuse.ch/api/)
+- [TempMail.so API](https://tempmail.so/) (for live automated phishing analysis)
+
+---
+
+## 📝 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+<div align="center">
+  <p>Built with 🖤 for Security Professionals and Threat Hunters.</p>
+</div>
