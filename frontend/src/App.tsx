@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppShell } from './components/layout/AppShell';
 import { Dashboard } from './pages/Dashboard';
 import { Analyze } from './pages/Analyze';
+import { EmailScanner } from './pages/EmailScanner';
 import { InvestigationsList } from './pages/InvestigationsList';
 import { InvestigationView } from './pages/InvestigationView';
 import { ThreatIntel } from './pages/ThreatIntel';
@@ -33,6 +34,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/analyze" element={<Analyze />} />
+            <Route path="/email-scanner" element={<EmailScanner />} />
             
             <Route path="/investigations" element={<InvestigationsList />} />
             <Route path="/investigations/:id" element={<InvestigationView />} />

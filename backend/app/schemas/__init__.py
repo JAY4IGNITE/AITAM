@@ -17,6 +17,10 @@ from .dashboard import (
 from .education import (
     EducationModule, QuizQuestion, QuizSubmissionRequest, QuizSubmissionResponse
 )
+from .tempmail import (
+    TempMailInboxCreate, TempMailInboxResponse, TempMailMessageSummary,
+    TempMailMessageDetail, TempMailPollResponse, TempMailHealthStatus
+)
 
 __all__ = [
     "InvestigationCreate",
@@ -48,4 +52,10 @@ __all__ = [
     "QuizQuestion",
     "QuizSubmissionRequest",
     "QuizSubmissionResponse",
+    "TempMailInboxCreate",
+    "TempMailInboxResponse",
+    "TempMailMessageSummary",
+    "TempMailMessageDetail",
+    "TempMailPollResponse",
+    "TempMailHealthStatus",
 ]

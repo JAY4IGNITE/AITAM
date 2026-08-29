@@ -16,8 +16,10 @@ from .autonomous import (
     TriageResult, InvestigationPlan, ResponseAction,
     InvestigationTask, AgentMessage, AgentToolPolicy, Incident, InvestigationFeedback
 )
+from .tempmail import TempMailInbox, TempMailMessage
 
 __all__ = [
+    "Base",
     "BaseModel",
     "Investigation",
     "InvestigationStatus",
@@ -25,7 +27,10 @@ __all__ = [
     "Finding",
     "Evidence",
     "AgentRun",
+    "AgentStatus",
+    "Evidence",
     "SandboxSession",
+    "SandboxStatus",
     "InvestigationEvent",
     "IOC",
     "Artifact",
@@ -49,5 +54,9 @@ __all__ = [
     "EvaluationRun",
     "EvaluationResult",
     "Report",
-    "AttackStep"
+    "AttackStep",
+    "ThreatReport",
+    "ThreatIndicator",
+    "TempMailInbox",
+    "TempMailMessage",
 ]

@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy.orm import selectinload
 
 from ..models.investigation import Investigation
 from ..models.report import Report, AttackStep
@@ -18,13 +17,7 @@ class ReportGenerator:
         Synthesizes actual multi-agent findings, live threat intelligence lookups, MITRE ATT&CK mappings,
         sandbox behavioral telemetry, and actionable containment playbooks without static mock templates.
         """
-        inv = await session.get(Investigation, investigation_id, options=[
-            selectinload(Investigation.agent_runs),
-            selectinload(Investigation.evidence),
-            selectinload(Investigation.findings),
-            selectinload(Investigation.sandbox_sessions),
-        ])
-        
+        inv = await session.get(Investigation, investigation_id)
         if not inv:
             return {"error": "Investigation not found"}
             
@@ -42,16 +35,24 @@ class ReportGenerator:
             except Exception:
                 pass
 
-        findings = inv.findings or []
-        evidence_items = inv.evidence or []
-        agent_runs = inv.agent_runs or []
-        sandbox_sessions = inv.sandbox_sessions or []
+        # 3. Explicitly query related objects to prevent missing greenlet async errors
+        findings_res = await session.execute(select(Finding).where(Finding.investigation_id == investigation_id))
+        findings = findings_res.scalars().all()
+
+        evidence_res = await session.execute(select(Evidence).where(Evidence.investigation_id == investigation_id))
+        evidence_items = evidence_res.scalars().all()
+
+        agent_runs_res = await session.execute(select(AgentRun).where(AgentRun.investigation_id == investigation_id))
+        agent_runs = agent_runs_res.scalars().all()
+
+        sb_res = await session.execute(select(SandboxSession).where(SandboxSession.investigation_id == investigation_id))
+        sandbox_sessions = sb_res.scalars().all()
 
         score = inv.final_risk_score if inv.final_risk_score is not None else (inv.initial_risk_score or 0.0)
         classification = inv.classification or "UNKNOWN"
         confidence_pct = round((inv.confidence or 0.95) * 100, 1)
 
-        # 3. Dynamic MITRE ATT&CK Matrix Mapping based on actual findings
+        # 4. Dynamic MITRE ATT&CK Matrix Mapping based on actual findings
         mitre_tactics = []
         observed_categories = {f.category for f in findings}
         
@@ -97,7 +98,7 @@ class ReportGenerator:
                 "description": "External rogue infrastructure hosting phishing or staging malicious secondary payloads."
             })
 
-        # 4. Executive Summary Generation
+        # 5. Executive Summary Generation
         danger_level = "CRITICAL THREAT" if score >= 80 else \
                        "HIGH RISK" if score >= 60 else \
                        "SUSPICIOUS" if score >= 40 else \
@@ -114,7 +115,7 @@ class ReportGenerator:
         else:
             summary_text += "No critical malicious indicators were confirmed by reputation providers or behavioral sandboxing."
 
-        # 5. Sandbox Detonation Telemetry
+        # 6. Sandbox Detonation Telemetry
         sandbox_data = None
         if sandbox_sessions:
             sb = sandbox_sessions[-1]
@@ -127,7 +128,7 @@ class ReportGenerator:
                 "screenshot": sb.screenshots.get("final") if (sb.screenshots and isinstance(sb.screenshots, dict)) else None
             }
 
-        # 6. Tailored SOC Incident Containment Playbook
+        # 7. Tailored SOC Incident Containment Playbook
         playbook = []
         if score >= 60:
             playbook.append({
@@ -169,8 +170,14 @@ class ReportGenerator:
                 "command": "log-entry --verdict 'BENIGN'"
             })
 
-        # 7. Compile Master Report Content
+        # 8. Compile Master Report Content
         report_content = {
+            "display_id": inv.display_id,
+            "target": inv.target,
+            "status": inv.status.value,
+            "final_risk_score": score,
+            "classification": classification,
+            "confidence": inv.confidence,
             "metadata": {
                 "report_id": f"REP-{inv.display_id}",
                 "investigation_id": inv.id,
@@ -229,15 +236,14 @@ class ReportGenerator:
                 {
                     "agent_name": a.agent_name,
                     "version": a.agent_version,
-                    "status": a.status.value,
+                    "status": a.status.value if hasattr(a.status, 'value') else str(a.status),
                     "duration_seconds": round(a.duration, 2) if a.duration else 0.0,
-                    "findings_count": a.findings_count or 0
+                    "findings_count": getattr(a, "findings_count", len((a.outputs or {}).get("findings", [])))
                 } for a in agent_runs
             ]
         }
 
-        # 8. Persist to PostgreSQL Report and AttackStep Tables
-        # Clean existing report to keep latest
+        # 9. Persist to PostgreSQL Report and AttackStep Tables
         await session.execute(
             Report.__table__.delete().where(Report.investigation_id == investigation_id)
         )
@@ -252,15 +258,13 @@ class ReportGenerator:
         )
         session.add(report)
 
-        # Store dynamic MITRE Attack steps
         for idx, m in enumerate(mitre_tactics):
             step = AttackStep(
                 investigation_id=investigation_id,
                 step_order=str(idx + 1),
                 description=f"{m['tactic']} - {m['technique']}: {m['description']}",
                 mitre_tactic=m["tactic_id"],
-                mitre_technique=m["technique_id"],
-                evidence_ids=[]
+                mitre_technique=m["technique_id"]
             )
             session.add(step)
 

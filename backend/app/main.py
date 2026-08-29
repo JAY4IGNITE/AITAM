@@ -15,12 +15,12 @@ from .models import (
     AttackJourneyStep, RiskAssessment, TriageResult, InvestigationPlan,
     InvestigationTask, AgentMessage, ResponseAction, Incident,
     Dataset, DatasetSample, EvaluationRun, EvaluationResult, Report,
-    AttackStep, ThreatReport, ThreatIndicator
+    AttackStep, ThreatReport, ThreatIndicator, TempMailInbox, TempMailMessage
 )
 
 from .api import (
     investigations, websocket, auth, threat_intel, incidents,
-    datasets, evaluation, demo, dashboard, reports, education
+    datasets, evaluation, demo, dashboard, reports, education, tempmail
 )
 
 @asynccontextmanager
@@ -68,6 +68,7 @@ app.add_middleware(
 # Mount API Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(investigations.router, prefix="/api/investigations", tags=["Investigations"])
+app.include_router(tempmail.router, prefix="/api/tempmail", tags=["TempMail Email Scanner"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(threat_intel.router, prefix="/api/threat-intel", tags=["Threat Intel"])
@@ -91,15 +92,18 @@ def root():
 async def health_check():
     import asyncpg
     from .engine.threat_intel_provider import registry
+    from .engine.tempmail import tempmail_client
+    from datetime import datetime
     
     status = {
         "status": "healthy",
-        "timestamp": os.getenv("CURRENT_TIME", ""),
+        "timestamp": datetime.utcnow().isoformat(),
         "services": {
             "database": "unhealthy",
             "redis": "unhealthy",
             "celery": "healthy",
             "sandbox": "healthy",
+            "tempmail_so": "unhealthy",
             "threat_intel_providers": []
         }
     }
@@ -124,11 +128,18 @@ async def health_check():
         status["status"] = "degraded"
         status["services"]["redis"] = f"unhealthy ({str(e)})"
 
-    # 3. Check Threat Intel Providers
+    # 3. Check Threat Intel Providers (URLhaus, VirusTotal, Google Safe Browsing, Local DB)
     try:
         health_list = await registry.get_health()
         status["services"]["threat_intel_providers"] = [h.model_dump() for h in health_list]
     except Exception:
         pass
+
+    # 4. Check TempMail.so integration
+    try:
+        tm_health = await tempmail_client.health_check()
+        status["services"]["tempmail_so"] = tm_health["status"]
+    except Exception as e:
+        status["services"]["tempmail_so"] = f"Degraded ({str(e)})"
 
     return status

@@ -1,11 +1,22 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from ..models.investigation import InvestigationStatus, InputType
 
 class InvestigationCreate(BaseModel):
     input_type: InputType
-    target: str = Field(..., description="The URL, email content, SMS text, or artifact payload")
+    target: Optional[str] = Field(None, description="The URL, email content, SMS text, or artifact payload")
+    content: Optional[str] = Field(None, description="Alternative field name for target")
+
+    @model_validator(mode='before')
+    @classmethod
+    def validate_target_or_content(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            if not data.get("target") and data.get("content"):
+                data["target"] = data["content"]
+            elif not data.get("target"):
+                raise ValueError("Target or content field is required")
+        return data
 
 class InvestigationResponse(BaseModel):
     id: str

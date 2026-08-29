@@ -299,9 +299,9 @@ async def get_investigation_agents(id: str, db: AsyncSession = Depends(get_db)):
         agents.append({
             "agent_name": run.agent_name,
             "version": run.agent_version,
-            "status": run.status.value,
+            "status": run.status.value if hasattr(run.status, 'value') else str(run.status),
             "duration": run.duration,
-            "findings_count": run.findings_count or 0,
+            "findings_count": getattr(run, "findings_count", len((run.outputs or {}).get("findings", []))),
             "error": run.error_message
         })
     return agents

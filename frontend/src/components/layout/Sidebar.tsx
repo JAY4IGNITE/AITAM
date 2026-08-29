@@ -10,7 +10,8 @@ import {
   GlobeLock,
   Database,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Mail
 } from 'lucide-react';
 
 export const Sidebar = () => {
@@ -19,9 +20,10 @@ export const Sidebar = () => {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Analyze Threat', path: '/analyze', icon: Search },
+    { name: 'Email Threat Ingestion', path: '/email-scanner', icon: Mail, highlight: true },
     { name: 'Investigation Cases', path: '/investigations', icon: Activity },
     { name: 'Threat Intel Center', path: '/threat-intel', icon: GlobeLock },
-    { name: 'SOC Incidents', path: '/incidents', icon: AlertTriangle, highlight: true },
+    { name: 'SOC Incidents', path: '/incidents', icon: AlertTriangle },
     { name: 'Threat Reports', path: '/reports', icon: FileWarning },
     { name: 'Awareness & Training', path: '/education', icon: GraduationCap },
     { name: 'Benchmark Datasets', path: '/datasets', icon: Database },
@@ -57,10 +59,10 @@ export const Sidebar = () => {
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-xs font-semibold ${
                 isActive 
                   ? item.highlight 
-                    ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' 
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
                     : 'bg-primary/20 text-primary border border-primary/30 shadow-[0_0_10px_rgba(59,130,246,0.15)]' 
                   : item.highlight
-                    ? 'text-orange-400/80 hover:bg-white/5'
+                    ? 'text-emerald-400/90 hover:bg-white/5'
                     : 'text-gray-400 hover:bg-white/5 hover:text-gray-200'
               }`}
             >

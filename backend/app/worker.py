@@ -28,6 +28,14 @@ def execute_agent_task(self, investigation_id: str, agent_name: str, payload: di
 def sync_threat_intel_feed_task(self):
     return asyncio.run(_sync_urlhaus_feed())
 
+@celery_app.task(name="poll_tempmail_inbox_task", bind=True, max_retries=3)
+def poll_tempmail_inbox_task(self, inbox_id: str):
+    return asyncio.run(_poll_tempmail_inbox(inbox_id))
+
+@celery_app.task(name="poll_all_tempmail_inboxes_task", bind=True, max_retries=2)
+def poll_all_tempmail_inboxes_task(self):
+    return asyncio.run(_poll_all_tempmail_inboxes())
+
 async def _run_agent(investigation_id: str, agent_name: str, payload: dict):
     from .agents.base import BaseAgent
     # Ensure all agents are loaded
@@ -60,11 +68,43 @@ async def _run_agent(investigation_id: str, agent_name: str, payload: dict):
         finally:
             await local_engine.dispose()
 
+async def _poll_tempmail_inbox(inbox_id: str) -> dict:
+    from .engine.tempmail_ingestion import TempMailIngestionService
+    
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/threatlens")
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
+    local_engine = create_async_engine(db_url, poolclass=NullPool)
+    LocalSession = async_sessionmaker(local_engine, expire_on_commit=False)
+    
+    async with LocalSession() as session:
+        try:
+            return await TempMailIngestionService.poll_inbox(inbox_id, session)
+        except Exception as e:
+            return {"status": "FAILED", "error": str(e)}
+        finally:
+            await local_engine.dispose()
+
+async def _poll_all_tempmail_inboxes() -> list:
+    from .engine.tempmail_ingestion import TempMailIngestionService
+    
+    db_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/threatlens")
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        
+    local_engine = create_async_engine(db_url, poolclass=NullPool)
+    LocalSession = async_sessionmaker(local_engine, expire_on_commit=False)
+    
+    async with LocalSession() as session:
+        try:
+            return await TempMailIngestionService.poll_all_active_inboxes(session)
+        except Exception as e:
+            return [{"status": "FAILED", "error": str(e)}]
+        finally:
+            await local_engine.dispose()
+
 async def _sync_urlhaus_feed() -> dict:
-    """
-    Ingests recent malicious URLs from URLhaus into PostgreSQL and updates Redis.
-    Never executes URLs during ingestion.
-    """
     from .models.threat_intel import ThreatIndicator
     
     auth_key = os.getenv("URLHAUS_AUTH_KEY") or os.getenv("URLHAUS_API_KEY", "")
@@ -95,7 +135,7 @@ async def _sync_urlhaus_feed() -> dict:
         urls_data = data.get("urls", [])
         
         async with LocalSession() as session:
-            for item in urls_data[:100]:  # Batch of top recent indicators
+            for item in urls_data[:100]:
                 raw_url = item.get("url")
                 if not raw_url:
                     continue
@@ -104,7 +144,6 @@ async def _sync_urlhaus_feed() -> dict:
                 tags = item.get("tags") or []
                 url_status = item.get("url_status") or "online"
                 
-                # Check if indicator already exists
                 existing = (await session.execute(
                     select(ThreatIndicator).where(
                         ThreatIndicator.indicator == raw_url,

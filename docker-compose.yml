@@ -39,6 +39,8 @@ services:
       - URLHAUS_API_KEY=${URLHAUS_API_KEY:-}
       - URLHAUS_AUTH_KEY=${URLHAUS_AUTH_KEY:-}
       - GOOGLE_SAFE_BROWSING_API_KEY=${GOOGLE_SAFE_BROWSING_API_KEY:-}
+      - TEMPMAIL_RAPIDAPI_KEY=${TEMPMAIL_RAPIDAPI_KEY:-}
+      - TEMPMAIL_AUTH_TOKEN=${TEMPMAIL_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
