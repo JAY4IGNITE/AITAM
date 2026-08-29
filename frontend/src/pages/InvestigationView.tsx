@@ -150,9 +150,16 @@ export const InvestigationView = () => {
             </Link>
           )}
 
+          <Link
+            to={`/agent-control/${id}`}
+            className="flex items-center gap-2 bg-primary/20 border border-primary/40 text-primary px-4 py-2 rounded-md hover:bg-primary/30 transition text-sm font-semibold"
+          >
+            <Sparkles className="w-4 h-4 text-primary" /> Live Agent Swarm
+          </Link>
+
           <button 
             onClick={() => setShowReportModal(true)}
-            className="flex items-center gap-2 bg-primary/20 border border-primary/40 text-primary px-4 py-2 rounded-md hover:bg-primary/30 transition disabled:opacity-50 text-sm font-semibold"
+            className="flex items-center gap-2 bg-white/5 border border-white/10 text-white px-4 py-2 rounded-md hover:bg-white/10 transition disabled:opacity-50 text-sm font-semibold"
             disabled={inv.status !== 'COMPLETED'}
           >
             <Eye className="w-4 h-4" /> View Full Report

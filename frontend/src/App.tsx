@@ -7,6 +7,7 @@ import { Analyze } from './pages/Analyze';
 import { EmailScanner } from './pages/EmailScanner';
 import { InvestigationsList } from './pages/InvestigationsList';
 import { InvestigationView } from './pages/InvestigationView';
+import { AgentControlCenter } from './pages/AgentControlCenter';
 import { ThreatIntel } from './pages/ThreatIntel';
 import { IncidentsQueue } from './components/IncidentsQueue';
 import { IncidentDetails } from './components/IncidentDetails';
@@ -35,6 +36,8 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/analyze" element={<Analyze />} />
             <Route path="/email-scanner" element={<EmailScanner />} />
+            <Route path="/agent-control" element={<AgentControlCenter />} />
+            <Route path="/agent-control/:id" element={<AgentControlCenter />} />
             
             <Route path="/investigations" element={<InvestigationsList />} />
             <Route path="/investigations/:id" element={<InvestigationView />} />

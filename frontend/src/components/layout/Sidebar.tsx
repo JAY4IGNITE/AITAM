@@ -20,7 +20,8 @@ export const Sidebar = () => {
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
     { name: 'Analyze Threat', path: '/analyze', icon: Search },
-    { name: 'Email Threat Ingestion', path: '/email-scanner', icon: Mail, highlight: true },
+    { name: 'Agent Control Center', path: '/agent-control', icon: Sparkles, highlight: true },
+    { name: 'Email Threat Ingestion', path: '/email-scanner', icon: Mail },
     { name: 'Investigation Cases', path: '/investigations', icon: Activity },
     { name: 'Threat Intel Center', path: '/threat-intel', icon: GlobeLock },
     { name: 'SOC Incidents', path: '/incidents', icon: AlertTriangle },

@@ -24,8 +24,29 @@ class BaseAgent:
     capabilities: List[str] = []
     
     @classmethod
+    async def emit_event(cls, investigation_id: str, event_type: str, status: str, message: str, data: dict = None):
+        """Emits a real-time event for this agent to live subscribers."""
+        try:
+            from ..engine.event_broadcaster import event_broadcaster
+            from ..schemas.agent_event import AgentEvent
+            
+            human_name = cls.agent_name.replace("_", " ").title()
+            await event_broadcaster.emit(AgentEvent(
+                investigation_id=investigation_id,
+                agent_id=cls.agent_name,
+                agent_name=human_name,
+                event_type=event_type,
+                status=status,
+                message=message,
+                data=data or {}
+            ))
+        except Exception as e:
+            logger.debug(f"Event emit notice: {e}")
+
+    @classmethod
     async def analyze(cls, investigation_id: str, session: AsyncSession) -> AgentResult:
         start_ts = time.time()
+        human_name = cls.agent_name.replace("_", " ").title()
         
         # Create run record
         run = AgentRun(
@@ -37,6 +58,14 @@ class BaseAgent:
         )
         session.add(run)
         await session.commit()
+        
+        await cls.emit_event(
+            investigation_id=investigation_id,
+            event_type="agent_started",
+            status="RUNNING",
+            message=f"{human_name} started analysis on artifact.",
+            data={"capabilities": cls.capabilities, "version": cls.agent_version}
+        )
         
         logger.info(f'{{"investigation_id": "{investigation_id}", "event": "start"}}')
         
@@ -63,8 +92,20 @@ class BaseAgent:
             
             # Persist summary
             run.output_summary = f"Generated {len(result.findings)} findings and {len(result.evidence)} evidence items."
-            
             await session.commit()
+            
+            await cls.emit_event(
+                investigation_id=investigation_id,
+                event_type="agent_completed",
+                status="COMPLETED",
+                message=f"{human_name} completed in {run.duration}s ({len(result.findings)} findings).",
+                data={
+                    "duration_seconds": run.duration,
+                    "findings_count": len(result.findings),
+                    "evidence_count": len(result.evidence),
+                    "findings_summary": [f.get("title") for f in result.findings if isinstance(f, dict)]
+                }
+            )
             
             logger.info(f'{{"investigation_id": "{investigation_id}", "event": "completed", "duration_sec": {run.duration}, "findings": {len(result.findings)}}}')
             return result
@@ -79,6 +120,14 @@ class BaseAgent:
             result.status = "FAILED"
             result.execution_time = run.duration
             result.errors = str(e)
+            
+            await cls.emit_event(
+                investigation_id=investigation_id,
+                event_type="agent_failed",
+                status="FAILED",
+                message=f"{human_name} failed: {str(e)}",
+                data={"error": str(e), "duration_seconds": run.duration}
+            )
             
             logger.error(f'{{"investigation_id": "{investigation_id}", "event": "failed", "duration_sec": {run.duration}, "error": "{str(e)}"}}')
             return result

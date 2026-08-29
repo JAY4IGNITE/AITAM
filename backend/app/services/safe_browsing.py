@@ -121,7 +121,7 @@ class SafeBrowsingService:
         except Exception:
             pass
 
-    async def check_url(self, raw_url: str) -> SafeBrowsingResult:
+    async def check_url(self, raw_url: str, investigation_id: Optional[str] = None) -> SafeBrowsingResult:
         """
         Checks a single URL against Google Safe Browsing.
         Returns a normalized SafeBrowsingResult without throwing exceptions.
@@ -135,20 +135,67 @@ class SafeBrowsingService:
                 error="invalid_url"
             )
 
+        if investigation_id:
+            try:
+                from ..engine.event_broadcaster import event_broadcaster
+                from ..schemas.agent_event import AgentEvent
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=investigation_id,
+                    agent_id="safe_browsing_tool",
+                    agent_name="Google Safe Browsing API v4",
+                    event_type="tool_started",
+                    status="RUNNING",
+                    message=f"Querying Google Safe Browsing for: {normalized}",
+                    data={"tool": "Google Safe Browsing API v4", "url": normalized}
+                ))
+            except Exception:
+                pass
+
         # 1. Check cache first
         cached = self._get_cached_result(normalized)
         if cached:
+            if investigation_id:
+                try:
+                    from ..engine.event_broadcaster import event_broadcaster
+                    from ..schemas.agent_event import AgentEvent
+                    await event_broadcaster.emit(AgentEvent(
+                        investigation_id=investigation_id,
+                        agent_id="safe_browsing_tool",
+                        agent_name="Google Safe Browsing API v4",
+                        event_type="tool_completed",
+                        status="COMPLETED",
+                        message=f"Cache hit: {('Threat detected: ' + ', '.join(cached.threat_types)) if cached.threat_detected else 'No known threat.'}",
+                        data={"from_cache": True, "threat_detected": cached.threat_detected, "threat_types": cached.threat_types}
+                    ))
+                except Exception:
+                    pass
             return cached
 
         api_key = self._get_api_key()
         if not api_key:
             logger.info("Safe Browsing check skipped: GOOGLE_SAFE_BROWSING_API_KEY not configured")
-            return SafeBrowsingResult(
+            res = SafeBrowsingResult(
                 url=raw_url,
                 normalized_url=normalized,
                 checked=False,
                 error="not_configured"
             )
+            if investigation_id:
+                try:
+                    from ..engine.event_broadcaster import event_broadcaster
+                    from ..schemas.agent_event import AgentEvent
+                    await event_broadcaster.emit(AgentEvent(
+                        investigation_id=investigation_id,
+                        agent_id="safe_browsing_tool",
+                        agent_name="Google Safe Browsing API v4",
+                        event_type="tool_completed",
+                        status="COMPLETED",
+                        message="Safe Browsing check skipped (key not configured)",
+                        data={"status": "skipped", "error": "not_configured"}
+                    ))
+                except Exception:
+                    pass
+            return res
 
         payload = {
             "client": {
@@ -217,19 +264,51 @@ class SafeBrowsingService:
                 
                 self._set_cached_result(result)
                 self.last_error = None
+                
+                if investigation_id:
+                    try:
+                        from ..engine.event_broadcaster import event_broadcaster
+                        from ..schemas.agent_event import AgentEvent
+                        await event_broadcaster.emit(AgentEvent(
+                            investigation_id=investigation_id,
+                            agent_id="safe_browsing_tool",
+                            agent_name="Google Safe Browsing API v4",
+                            event_type="tool_completed",
+                            status="COMPLETED",
+                            message=f"Safe Browsing: {('THREAT DETECTED (' + ', '.join(result.threat_types) + ')') if result.threat_detected else 'No known threat.'}",
+                            data={"threat_detected": result.threat_detected, "threat_types": result.threat_types, "latency_ms": latency}
+                        ))
+                    except Exception:
+                        pass
                 return result
 
             elif resp.status_code in [400, 403]:
                 error_msg = "api_key_service_blocked" if "blocked" in resp.text.lower() else "invalid_api_key"
                 self.last_error = f"HTTP {resp.status_code} ({error_msg})"
                 logger.warning(f"Safe Browsing authorization notice: HTTP {resp.status_code}")
-                return SafeBrowsingResult(
+                res = SafeBrowsingResult(
                     url=raw_url,
                     normalized_url=normalized,
                     checked=False,
                     error=error_msg,
                     latency_ms=latency
                 )
+                if investigation_id:
+                    try:
+                        from ..engine.event_broadcaster import event_broadcaster
+                        from ..schemas.agent_event import AgentEvent
+                        await event_broadcaster.emit(AgentEvent(
+                            investigation_id=investigation_id,
+                            agent_id="safe_browsing_tool",
+                            agent_name="Google Safe Browsing API v4",
+                            event_type="tool_completed",
+                            status="COMPLETED",
+                            message=f"Safe Browsing authorization status: {error_msg}",
+                            data={"status": "error", "error": error_msg, "latency_ms": latency}
+                        ))
+                    except Exception:
+                        pass
+                return res
             elif resp.status_code == 429:
                 self.last_error = "rate_limited"
                 logger.warning("Safe Browsing rate limit exceeded (HTTP 429)")

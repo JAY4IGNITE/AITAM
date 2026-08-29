@@ -57,9 +57,32 @@ class Orchestrator:
                     ))
                 await session.commit()
                 
+                from ..engine.event_broadcaster import event_broadcaster
+                from ..schemas.agent_event import AgentEvent
+                
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="orchestrator",
+                    agent_name="SOC Orchestrator",
+                    event_type="agent_started",
+                    status="RUNNING",
+                    message=f"Initialized autonomous investigation on target: {inv.target}",
+                    data={"input_type": inv.input_type.value, "target": inv.target, "extracted_iocs_count": len(threat_object.extracted_indicators)}
+                ))
+                
                 # 2. AUTONOMOUS TRIAGE AGENT
                 inv.current_stage = "Autonomous Triage & Priority Assessment"
                 await session.commit()
+                
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="orchestrator",
+                    agent_name="SOC Orchestrator",
+                    event_type="agent_message",
+                    status="RUNNING",
+                    message="Passing normalized input artifact to Triage Agent...",
+                    data={"sender": "orchestrator", "recipient": "triage_agent"}
+                ))
                 
                 from ..agents.triage_agent import TriageAgent
                 await TriageAgent.analyze(inv.id, session)
@@ -71,6 +94,16 @@ class Orchestrator:
                 # 3. INVESTIGATION PLANNER AGENT
                 inv.current_stage = "Planning Agent Execution Pipeline"
                 await session.commit()
+                
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="triage_agent",
+                    agent_name="Triage Agent",
+                    event_type="agent_message",
+                    status="RUNNING",
+                    message=f"Triage assigned priority {priority}. Handing off to Investigation Planner...",
+                    data={"sender": "triage_agent", "recipient": "investigation_planner", "priority": priority}
+                ))
                 
                 from ..agents.investigation_planner import InvestigationPlannerAgent
                 await InvestigationPlannerAgent.analyze(inv.id, session)
@@ -89,6 +122,16 @@ class Orchestrator:
                 # Get agent route based on input type
                 agents_to_run = AgentRouter.get_route(inv.input_type)
                 
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="investigation_planner",
+                    agent_name="Investigation Planner",
+                    event_type="agent_message",
+                    status="RUNNING",
+                    message=f"Dispatched {len(agents_to_run)} specialized agents in parallel: {', '.join([ac.agent_name for ac in agents_to_run])}",
+                    data={"sender": "investigation_planner", "recipient": [ac.agent_name for ac in agents_to_run]}
+                ))
+                
                 async def run_agent(agent_class, i_id):
                     async with AsyncSessionLocal() as agent_session:
                         try:
@@ -105,6 +148,16 @@ class Orchestrator:
                 inv.current_stage = "Fusing Cross-Agent Signals & IoCs"
                 await session.commit()
                 
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="evidence_fusion",
+                    agent_name="Evidence Fusion Agent",
+                    event_type="agent_started",
+                    status="RUNNING",
+                    message="Aggregating and fusing multi-agent telemetry, indicators, and threat intelligence...",
+                    data={"stage": "evidence_fusion"}
+                ))
+                
                 async with AsyncSessionLocal() as corr_session:
                     await FindingCorrelationService.correlate(inv.id, corr_session)
                 
@@ -117,6 +170,21 @@ class Orchestrator:
                 inv.initial_risk_score = risk_output.score
                 inv.confidence = 0.95
                 await session.commit()
+                
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="risk_agent",
+                    agent_name="Risk Evaluation Agent",
+                    event_type="risk_updated",
+                    status="RUNNING",
+                    message=f"Agent-layer risk score: {risk_output.score}/100 ({risk_output.level}) with {len(risk_output.reasons)} active risk factors.",
+                    data={
+                        "score": risk_output.score,
+                        "level": risk_output.level,
+                        "sandbox_required": risk_output.sandbox_required,
+                        "reasons": [{"finding": r.finding, "contribution": r.contribution} for r in risk_output.reasons]
+                    }
+                ))
                 
                 session.add(RiskAssessment(
                     investigation_id=inv.id,
@@ -135,6 +203,16 @@ class Orchestrator:
                     inv.status = InvestigationStatus.SANDBOX_QUEUED
                     inv.current_stage = "Queueing for Adaptive Sandbox Detonation"
                     await session.commit()
+                    
+                    await event_broadcaster.emit(AgentEvent(
+                        investigation_id=inv.id,
+                        agent_id="sandbox_agent",
+                        agent_name="Playwright Sandbox Agent",
+                        event_type="agent_started",
+                        status="RUNNING",
+                        message="Triggered isolated zero-trust browser sandbox for dynamic URL detonation.",
+                        data={"target_urls": threat_object.urls or [inv.target]}
+                    ))
                     
                     inv.status = InvestigationStatus.SANDBOX_RUNNING
                     inv.current_stage = "Detonating URL in Isolated Sandbox"
@@ -166,6 +244,20 @@ class Orchestrator:
                     inv.final_risk_score = final_risk_output.score
                     inv.classification = final_risk_output.level
                     
+                    await event_broadcaster.emit(AgentEvent(
+                        investigation_id=inv.id,
+                        agent_id="risk_agent",
+                        agent_name="Risk Evaluation Agent",
+                        event_type="risk_updated",
+                        status="RUNNING",
+                        message=f"Post-detonation risk score recomputed: {final_risk_output.score}/100 ({final_risk_output.level}).",
+                        data={
+                            "score": final_risk_output.score,
+                            "level": final_risk_output.level,
+                            "reasons": [{"finding": r.finding, "contribution": r.contribution} for r in final_risk_output.reasons]
+                        }
+                    ))
+                    
                     session.add(RiskAssessment(
                         investigation_id=inv.id,
                         stage="SANDBOX",
@@ -193,6 +285,16 @@ class Orchestrator:
                 inv.current_stage = "Formulating Response Actions & Recommendations"
                 await session.commit()
                 
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="risk_agent",
+                    agent_name="Risk Evaluation Agent",
+                    event_type="agent_message",
+                    status="RUNNING",
+                    message=f"Risk rating: {inv.classification} ({inv.final_risk_score}/100). Passing to SOC Response Agent for playbook formulation...",
+                    data={"sender": "risk_agent", "recipient": "response_agent", "classification": inv.classification}
+                ))
+                
                 from ..agents.response_agent import ResponseAgent
                 await ResponseAgent.analyze(inv.id, session)
                 
@@ -209,6 +311,21 @@ class Orchestrator:
                 
                 from ..engine.report_generator import ReportGenerator
                 await ReportGenerator.generate_report(inv.id, session)
+                
+                await event_broadcaster.emit(AgentEvent(
+                    investigation_id=inv.id,
+                    agent_id="report_agent",
+                    agent_name="Forensic Report Agent",
+                    event_type="investigation_completed",
+                    status="COMPLETED",
+                    message=f"Investigation concluded. Final classification: {inv.classification} ({inv.final_risk_score}/100). Forensic dossier generated.",
+                    data={
+                        "risk_score": inv.final_risk_score,
+                        "classification": inv.classification,
+                        "report_id": f"REP-{inv.display_id}",
+                        "findings_count": len(final_risk_output.reasons)
+                    }
+                ))
                 
                 # Automatically create Incident if Risk is Medium, High, or Critical
                 if inv.final_risk_score and inv.final_risk_score >= 40:

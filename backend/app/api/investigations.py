@@ -406,3 +406,53 @@ async def get_journey(id: str, db: AsyncSession = Depends(get_db)):
     from ..models.journey import AttackJourneyStep
     res = await db.execute(select(AttackJourneyStep).where(AttackJourneyStep.investigation_id == id).order_by(AttackJourneyStep.sequence.asc()))
     return res.scalars().all()
+
+@router.get("/{id}/events")
+async def get_investigation_events(id: str, db: AsyncSession = Depends(get_db)):
+    """Returns stored chronological investigation execution events."""
+    from ..models.event import InvestigationEvent
+    result = await db.execute(
+        select(InvestigationEvent).where(InvestigationEvent.investigation_id == id).order_by(InvestigationEvent.created_at.asc())
+    )
+    events = result.scalars().all()
+    
+    out = []
+    for ev in events:
+        meta = ev.metadata_payload or {}
+        out.append({
+            "id": ev.id,
+            "investigation_id": ev.investigation_id,
+            "timestamp": meta.get("timestamp", ev.created_at.isoformat() if ev.created_at else ""),
+            "agent_id": meta.get("agent_id", ev.source or "agent"),
+            "agent_name": meta.get("agent_name", ev.source or "Agent"),
+            "event_type": ev.event_type,
+            "status": meta.get("status", "COMPLETED"),
+            "message": meta.get("message", ev.event_type),
+            "data": meta.get("data", {})
+        })
+    return out
+
+@router.get("/{id}/events/stream")
+async def stream_investigation_events(id: str):
+    """Server-Sent Events (SSE) stream for real-time multi-agent execution events."""
+    import json
+    from fastapi.responses import StreamingResponse
+    from ..engine.event_broadcaster import event_broadcaster
+    
+    queue = await event_broadcaster.subscribe_sse(id)
+    
+    async def event_generator():
+        # First send buffered recent events for instant hydration
+        buffered = event_broadcaster.get_buffered_events(id)
+        for b_ev in buffered:
+            yield f"data: {json.dumps(b_ev)}\n\n"
+            
+        try:
+            while True:
+                data = await queue.get()
+                yield f"data: {json.dumps(data)}\n\n"
+        except asyncio.CancelledError:
+            await event_broadcaster.unsubscribe_sse(id, queue)
+            
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+

@@ -1,35 +1,33 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from typing import Dict, List
+import json
+import logging
+from ..engine.event_broadcaster import event_broadcaster
 
+logger = logging.getLogger("websocket")
 router = APIRouter()
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-
-    async def connect(self, websocket: WebSocket, investigation_id: str):
-        await websocket.accept()
-        if investigation_id not in self.active_connections:
-            self.active_connections[investigation_id] = []
-        self.active_connections[investigation_id].append(websocket)
-
-    def disconnect(self, websocket: WebSocket, investigation_id: str):
-        if investigation_id in self.active_connections:
-            self.active_connections[investigation_id].remove(websocket)
-
-    async def broadcast(self, investigation_id: str, message: dict):
-        if investigation_id in self.active_connections:
-            for connection in self.active_connections[investigation_id]:
-                await connection.send_json(message)
-
-manager = ConnectionManager()
-
 @router.websocket("/ws/investigations/{investigation_id}")
-async def websocket_endpoint(websocket: WebSocket, investigation_id: str):
-    await manager.connect(websocket, investigation_id)
+async def websocket_investigation_endpoint(websocket: WebSocket, investigation_id: str):
+    await websocket.accept()
+    await event_broadcaster.register_ws(investigation_id, websocket)
+    
+    # 1. Immediately hydrate client with recent buffered events
+    try:
+        buffered = event_broadcaster.get_buffered_events(investigation_id)
+        if buffered:
+            for ev in buffered:
+                await websocket.send_text(json.dumps(ev))
+    except Exception as e:
+        logger.debug(f"Hydration notice: {e}")
+
+    # 2. Listen for client pings or disconnects
     try:
         while True:
-            # We don't really expect client to send messages, just listen
-            data = await websocket.receive_text()
+            msg = await websocket.receive_text()
+            # Respond to client ping with pong heartbeat
+            if msg == "ping":
+                await websocket.send_text(json.dumps({"type": "pong", "investigation_id": investigation_id}))
     except WebSocketDisconnect:
-        manager.disconnect(websocket, investigation_id)
+        await event_broadcaster.unregister_ws(investigation_id, websocket)
+    except Exception as ex:
+        await event_broadcaster.unregister_ws(investigation_id, websocket)
