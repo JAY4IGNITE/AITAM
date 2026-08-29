@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Play, Settings, Loader2 } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Play, Settings, Loader2, ArrowLeft } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = "/api";
 
 export function EvaluationRunner() {
   const [searchParams] = useSearchParams();
@@ -33,51 +33,60 @@ export function EvaluationRunner() {
   });
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-white">Configure Evaluation</h1>
-        <p className="text-gray-400 mt-2">Run the multi-agent SOC pipeline against the dataset.</p>
+    <div className="p-8 max-w-3xl mx-auto space-y-6 animate-in fade-in duration-300">
+      <div className="flex items-center justify-between border-b border-zinc-800 pb-5">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Configure Benchmark Run</h1>
+          <p className="text-xs text-zinc-400 mt-1">Execute the multi-agent SOC pipeline against the benchmark dataset.</p>
+        </div>
+        <Link to="/datasets" className="text-xs text-zinc-400 hover:text-white flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to Datasets
+        </Link>
       </div>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-        <h2 className="text-lg font-medium text-white mb-6 flex items-center gap-2">
-          <Settings className="w-5 h-5 text-gray-400" />
-          Execution Parameters
+      <div className="glass-panel p-6 space-y-6">
+        <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+          <Settings className="w-4 h-4 text-zinc-400" />
+          <span>Execution Parameters</span>
         </h2>
         
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Sample Limit</label>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Sample Limit</label>
             <input 
               type="number" 
               value={limit}
               onChange={(e) => setLimit(parseInt(e.target.value))}
-              className="w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-white"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-600"
             />
-            <p className="text-xs text-gray-500 mt-1">Limit the number of samples to process (useful for testing).</p>
+            <p className="text-[11px] text-zinc-500 mt-1">Limit the number of samples to process from the corpus.</p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">Parallelism (Concurrency)</label>
+            <label className="block text-xs font-medium text-zinc-300 mb-1">Parallel Swarm Workers</label>
             <input 
               type="number" 
               value={parallelism}
               onChange={(e) => setParallelism(parseInt(e.target.value))}
-              max={10}
-              min={1}
-              className="w-full bg-gray-900 border border-gray-700 rounded-md px-4 py-2 text-white"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-zinc-600"
             />
-            <p className="text-xs text-gray-500 mt-1">Number of concurrent sandboxes/agents to run. Max 10.</p>
+            <p className="text-[11px] text-zinc-500 mt-1">Number of parallel worker coroutines dispatching multi-agent investigations.</p>
           </div>
 
-          <button
-            onClick={() => runMutation.mutate()}
-            disabled={runMutation.isPending || !datasetId}
-            className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex justify-center items-center gap-2"
-          >
-            {runMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
-            {runMutation.isPending ? 'Starting Evaluation...' : 'Run Evaluation'}
-          </button>
+          <div className="pt-2">
+            <button
+              onClick={() => runMutation.mutate()}
+              disabled={runMutation.isPending || !datasetId}
+              className="w-full bg-white hover:bg-zinc-200 text-zinc-950 font-semibold py-2.5 px-4 rounded text-xs transition disabled:opacity-40 flex items-center justify-center gap-2"
+            >
+              {runMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4 fill-current" />
+              )}
+              <span>{runMutation.isPending ? 'Starting Swarm...' : 'Start Evaluation Run'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

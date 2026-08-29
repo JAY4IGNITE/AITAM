@@ -1,0 +1,52 @@
+services:
+  # -------------------------------------------------------------
+  # 1. ThreatLens FastAPI Backend Web Service
+  # -------------------------------------------------------------
+  - type: web
+    name: threatlens-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        sync: false # Set in Render Dashboard with your Supabase URL
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GOOGLE_SAFE_BROWSING_API_KEY
+        sync: false
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+      - key: URLHAUS_AUTH_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "*"
+
+  # -------------------------------------------------------------
+  # 2. ThreatLens React Frontend (Static Site)
+  # -------------------------------------------------------------
+  - type: web
+    name: threatlens-ui
+    runtime: static
+    plan: free
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      # SPA rewrite rule to handle React Router client routing
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.x

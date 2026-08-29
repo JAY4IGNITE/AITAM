@@ -1,14 +1,14 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
-import { Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { useParams, Link } from 'react-router-dom';
+import { Loader2, CheckCircle2, XCircle, AlertCircle, RefreshCw, ArrowLeft } from 'lucide-react';
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = "/api";
 
 export function EvaluationResults() {
   const { id } = useParams();
 
-  const { data: run, isLoading, refetch } = useQuery({
+  const { data: run, isLoading } = useQuery({
     queryKey: ['evaluation', id],
     queryFn: async () => {
       const res = await fetch(`${API_URL}/evaluation/${id}`);
@@ -22,95 +22,91 @@ export function EvaluationResults() {
   });
 
   if (isLoading) {
-    return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>;
+    return (
+      <div className="flex justify-center p-16">
+        <Loader2 className="w-6 h-6 text-zinc-400 animate-spin" />
+      </div>
+    );
   }
 
   const isRunning = run?.status === 'RUNNING' || run?.status === 'STARTING';
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
+      <div className="flex justify-between items-center border-b border-zinc-800 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-            Evaluation Results
-            {isRunning && <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />}
-          </h1>
-          <p className="text-gray-400 mt-2">ID: {run?.id}</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+              <span>Benchmark Results</span>
+              {isRunning && <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin" />}
+            </h1>
+            <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-medium ${
+              run?.status === 'COMPLETED' ? 'bg-zinc-900 border border-zinc-700 text-zinc-200' :
+              run?.status === 'FAILED' ? 'bg-zinc-900 border border-zinc-800 text-zinc-400' :
+              'bg-zinc-900 border border-zinc-700 text-white'
+            }`}>
+              {run?.status}
+            </span>
+          </div>
+          <p className="text-xs text-zinc-400 font-mono mt-1">ID: {run?.id}</p>
         </div>
-        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-          run?.status === 'COMPLETED' ? 'bg-green-900/30 text-green-400' :
-          run?.status === 'FAILED' ? 'bg-red-900/30 text-red-400' :
-          'bg-blue-900/30 text-blue-400'
-        }`}>
-          {run?.status}
+
+        <Link to="/datasets" className="text-xs text-zinc-400 hover:text-white flex items-center gap-1">
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to Datasets
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="glass-panel p-5 space-y-1">
+          <div className="text-xs text-zinc-400 uppercase tracking-wider">Total Samples</div>
+          <div className="text-2xl font-bold text-white font-mono">{run?.total_samples || 0}</div>
+        </div>
+        <div className="glass-panel p-5 space-y-1">
+          <div className="text-xs text-zinc-400 uppercase tracking-wider">Completed Samples</div>
+          <div className="text-2xl font-bold text-white font-mono flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            <span>{run?.completed_samples || 0}</span>
+          </div>
+        </div>
+        <div className="glass-panel p-5 space-y-1">
+          <div className="text-xs text-zinc-400 uppercase tracking-wider">Benchmark Progress</div>
+          <div className="text-2xl font-bold text-white font-mono">
+            {run?.total_samples ? Math.round(((run?.completed_samples || 0) / run.total_samples) * 100) : 0}%
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <div className="text-gray-400 text-sm font-medium">Total Samples</div>
-          <div className="text-3xl font-bold text-white mt-2">{run?.total_samples || 0}</div>
-        </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <div className="text-gray-400 text-sm font-medium">Completed</div>
-          <div className="text-3xl font-bold text-green-400 mt-2 flex items-center gap-2">
-            <CheckCircle2 className="w-6 h-6" /> {run?.completed_samples || 0}
-          </div>
-        </div>
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <div className="text-gray-400 text-sm font-medium">Failed</div>
-          <div className="text-3xl font-bold text-red-400 mt-2 flex items-center gap-2">
-            <XCircle className="w-6 h-6" /> {run?.failed_samples || 0}
-          </div>
-        </div>
-      </div>
-
-      {run?.status === 'COMPLETED' && run.accuracy !== null && (
-        <>
-          <h2 className="text-xl font-bold text-white mt-8 mb-4">Metrics (Macro Average)</h2>
+      {run?.metrics && (
+        <div className="glass-panel p-5 space-y-4">
+          <h2 className="text-sm font-semibold text-white">Evaluation Metrics</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <MetricCard title="Accuracy" value={(run.accuracy * 100).toFixed(1) + '%'} />
-            <MetricCard title="Precision" value={(run.precision * 100).toFixed(1) + '%'} />
-            <MetricCard title="Recall" value={(run.recall * 100).toFixed(1) + '%'} />
-            <MetricCard title="F1 Score" value={(run.f1_score * 100).toFixed(1) + '%'} />
+            <div className="bg-zinc-900/60 border border-zinc-800 p-3 rounded">
+              <div className="text-[10px] text-zinc-400 uppercase font-mono">Accuracy</div>
+              <div className="text-lg font-bold text-white font-mono mt-1">
+                {run.metrics.accuracy ? `${(run.metrics.accuracy * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+            </div>
+            <div className="bg-zinc-900/60 border border-zinc-800 p-3 rounded">
+              <div className="text-[10px] text-zinc-400 uppercase font-mono">Precision</div>
+              <div className="text-lg font-bold text-white font-mono mt-1">
+                {run.metrics.precision ? `${(run.metrics.precision * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+            </div>
+            <div className="bg-zinc-900/60 border border-zinc-800 p-3 rounded">
+              <div className="text-[10px] text-zinc-400 uppercase font-mono">Recall</div>
+              <div className="text-lg font-bold text-white font-mono mt-1">
+                {run.metrics.recall ? `${(run.metrics.recall * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+            </div>
+            <div className="bg-zinc-900/60 border border-zinc-800 p-3 rounded">
+              <div className="text-[10px] text-zinc-400 uppercase font-mono">F1-Score</div>
+              <div className="text-lg font-bold text-white font-mono mt-1">
+                {run.metrics.f1_score ? `${(run.metrics.f1_score * 100).toFixed(1)}%` : 'N/A'}
+              </div>
+            </div>
           </div>
-
-          <h2 className="text-xl font-bold text-white mt-8 mb-4">Confusion Matrix</h2>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 overflow-x-auto">
-             <table className="w-full text-sm text-left text-gray-400">
-                <thead className="text-xs text-gray-300 uppercase bg-gray-900">
-                  <tr>
-                    <th className="px-6 py-3">Actual \ Predicted</th>
-                    {run.confusion_matrix.labels.map((l: string) => <th key={l} className="px-6 py-3">{l}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {run.confusion_matrix.matrix.map((row: number[], i: number) => (
-                    <tr key={i} className="border-b border-gray-700">
-                      <th className="px-6 py-4 font-medium text-white bg-gray-900 whitespace-nowrap">
-                        {run.confusion_matrix.labels[i]}
-                      </th>
-                      {row.map((val: number, j: number) => (
-                        <td key={j} className={`px-6 py-4 text-center ${i === j ? 'bg-green-900/20 text-green-400 font-bold' : val > 0 ? 'bg-red-900/20 text-red-400 font-bold' : ''}`}>
-                          {val}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-             </table>
-          </div>
-        </>
+        </div>
       )}
-    </div>
-  );
-}
-
-function MetricCard({ title, value }: { title: string, value: string | number }) {
-  return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-      <div className="text-gray-400 text-xs font-medium uppercase tracking-wider">{title}</div>
-      <div className="text-2xl font-bold text-white mt-1">{value}</div>
     </div>
   );
 }

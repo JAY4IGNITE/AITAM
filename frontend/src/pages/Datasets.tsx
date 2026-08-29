@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Database, Upload, FileJson, BarChart3, Loader2, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = "http://localhost:8000/api";
+const API_URL = "/api";
 
 export function Datasets() {
   const [file, setFile] = useState<File | null>(null);
@@ -41,90 +41,87 @@ export function Datasets() {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in duration-300">
+      <div className="flex justify-between items-center border-b border-zinc-800 pb-5">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white">Datasets</h1>
-          <p className="text-gray-400 mt-2">Manage datasets for evaluation and validation.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-white">Benchmark Datasets</h1>
+          <p className="text-xs text-zinc-400 mt-1">Manage threat datasets for validation, precision benchmarking, and SOC performance evaluation.</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Upload Form */}
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 h-fit">
-          <h2 className="text-lg font-medium text-white mb-4 flex items-center gap-2">
-            <Upload className="w-5 h-5 text-blue-400" />
-            Import Dataset
+        <div className="glass-panel p-5 h-fit space-y-4">
+          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Upload className="w-4 h-4 text-zinc-400" />
+            <span>Import Dataset</span>
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">Dataset Name</label>
-              <input
-                type="text"
-                value={name}
+              <label className="block text-xs font-medium text-zinc-300 mb-1">Dataset Name</label>
+              <input 
+                type="text" 
+                value={name} 
                 onChange={(e) => setName(e.target.value)}
-                className="w-full bg-gray-900 border border-gray-700 rounded-md px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder="e.g. PhishTank 2024"
+                placeholder="e.g. PhishTank 2026 Q1 Corpus"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-400 mb-1">File (CSV, JSON, JSONL)</label>
-              <input
-                type="file"
-                accept=".csv,.json,.jsonl"
-                onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
-                className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-gray-700 file:text-white hover:file:bg-gray-600 cursor-pointer"
+              <label className="block text-xs font-medium text-zinc-300 mb-1">JSON Dataset File</label>
+              <input 
+                type="file" 
+                accept=".json"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded p-2 text-xs text-zinc-400 file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-800 file:text-white hover:file:bg-zinc-700 cursor-pointer"
               />
             </div>
             <button
               onClick={() => uploadMutation.mutate()}
               disabled={!file || !name || uploadMutation.isPending}
-              className="w-full bg-blue-600 text-white rounded-md py-2 font-medium hover:bg-blue-700 disabled:opacity-50 flex justify-center items-center gap-2 transition-colors"
+              className="w-full bg-white hover:bg-zinc-200 text-zinc-950 font-semibold py-2 px-4 rounded text-xs transition disabled:opacity-40 flex items-center justify-center gap-2"
             >
-              {uploadMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {uploadMutation.isPending ? 'Importing...' : 'Upload Dataset'}
+              {uploadMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <span>Import Dataset</span>
             </button>
           </div>
         </div>
 
-        {/* Dataset List */}
-        <div className="lg:col-span-2 space-y-4">
+        {/* Datasets List */}
+        <div className="lg:col-span-2 space-y-3">
+          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+            <Database className="w-4 h-4 text-zinc-400" />
+            <span>Available Datasets ({datasets?.length || 0})</span>
+          </h2>
+
           {isLoading ? (
-            <div className="flex justify-center p-8">
-              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-            </div>
+            <div className="p-8 text-center text-xs font-mono text-zinc-500">Loading datasets...</div>
           ) : datasets?.length === 0 ? (
-            <div className="bg-gray-800 border border-gray-700 rounded-lg p-12 text-center">
-              <Database className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-300">No datasets found</h3>
-              <p className="text-gray-500 mt-1">Upload a dataset to start evaluating the platform.</p>
+            <div className="glass-panel p-8 text-center text-xs text-zinc-400">
+              No datasets found. Import a JSON dataset to run evaluations.
             </div>
           ) : (
-            datasets?.map((ds: any) => (
-              <div key={ds.id} className="bg-gray-800 border border-gray-700 rounded-lg p-5 flex items-center justify-between hover:border-gray-600 transition-colors">
-                <div className="flex items-start gap-4">
-                  <div className="p-3 bg-gray-900 rounded-lg">
-                    <FileJson className="w-6 h-6 text-indigo-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-medium text-white">{ds.name}</h3>
-                    <div className="flex gap-4 mt-1 text-sm text-gray-400">
-                      <span>{ds.sample_count.toLocaleString()} samples</span>
-                      <span>Uploaded {new Date(ds.created_at).toLocaleDateString()}</span>
+            <div className="space-y-3">
+              {datasets?.map((ds: any) => (
+                <div key={ds.id} className="glass-panel p-4 flex justify-between items-center">
+                  <div className="space-y-1">
+                    <div className="text-xs font-semibold text-white">{ds.name}</div>
+                    <div className="text-[11px] text-zinc-400 font-mono">
+                      {ds.samples_count ?? 0} samples • Created {new Date(ds.created_at || Date.now()).toLocaleDateString()}
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => navigate(`/evaluation/run?dataset=${ds.id}`)}
+                      className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 text-xs px-3 py-1.5 rounded transition flex items-center gap-1.5"
+                    >
+                      <Play className="w-3 h-3 fill-current" />
+                      <span>Run Eval</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => navigate(`/evaluation/run?dataset=${ds.id}`)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-600 transition-colors text-sm font-medium"
-                  >
-                    <Play className="w-4 h-4" />
-                    Evaluate
-                  </button>
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </div>
