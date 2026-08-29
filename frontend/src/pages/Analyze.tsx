@@ -17,11 +17,6 @@ export const Analyze = () => {
     { id: 'SOCIAL', icon: Share2, label: 'Social Post' },
   ];
 
-  const loadDemo = () => {
-    setInputType('SMS');
-    setContent('URGENT: Verify your crypto wallet at http://malicious.test/login before it is locked.');
-  };
-
   const startAnalysis = async () => {
     if (!content) return;
     setLoading(true);
@@ -47,13 +42,6 @@ export const Analyze = () => {
           <h1 className="text-3xl font-bold tracking-tight text-white mb-2">Analyze Threat</h1>
           <p className="text-gray-400">Submit an artifact for automated multi-agent triage and investigation.</p>
         </div>
-        <button 
-          onClick={loadDemo}
-          className="flex items-center gap-2 text-xs font-bold text-orange-400 bg-orange-500/10 hover:bg-orange-500/20 px-3 py-1.5 rounded transition border border-orange-500/20"
-        >
-          <Sparkles className="w-3 h-3" />
-          LOAD DEMO PAYLOAD
-        </button>
       </div>
 
       <div className="glass-panel overflow-hidden border border-white/10 shadow-2xl">

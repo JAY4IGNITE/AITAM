@@ -43,7 +43,7 @@ export const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard 
           title="Total Investigations" 
-          value={investigations?.length || 1284} 
+          value={investigations?.length ?? 0} 
           subtitle="All time"
           icon={Search}
           color="text-blue-500"
@@ -51,7 +51,7 @@ export const Dashboard = () => {
         />
         <MetricCard 
           title="Active Analysis" 
-          value={activeCount} 
+          value={activeCount ?? 0} 
           subtitle="Agents running"
           icon={Activity}
           color="text-green-500"
@@ -60,7 +60,7 @@ export const Dashboard = () => {
         />
         <MetricCard 
           title="Critical Threats" 
-          value={criticalIncidents || 17} 
+          value={criticalIncidents ?? 0} 
           subtitle="Require immediate action"
           icon={AlertTriangle}
           color="text-red-500"
@@ -68,7 +68,7 @@ export const Dashboard = () => {
         />
         <MetricCard 
           title="Automated Responses" 
-          value={482} 
+          value={0} 
           subtitle="DNS & Email blocks"
           icon={Shield}
           color="text-purple-500"
@@ -76,7 +76,7 @@ export const Dashboard = () => {
         />
       </div>
 
-      {/* Threat Activity (Mocked for visual density if no data) */}
+      {/* Threat Activity */}
       <div className="glass-panel p-6 border border-white/5">
         <div className="flex items-center justify-between mb-6">
           <div>
