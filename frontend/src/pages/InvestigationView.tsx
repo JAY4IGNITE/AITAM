@@ -5,7 +5,7 @@ import {
   AlertTriangle, Download, Activity, MonitorPlay, ShieldAlert,
   GlobeLock, CheckCircle, Clock, ArrowRight, ShieldCheck, HelpCircle,
   FileText, Sparkles, Layers, Eye, X, Shield, Terminal, BookOpen,
-  ListOrdered, ExternalLink
+  ListOrdered, ExternalLink, ShieldX, Link2
 } from 'lucide-react';
 
 import { InvestigationTimeline } from '../components/ui/InvestigationTimeline';
@@ -379,6 +379,52 @@ export const InvestigationView = () => {
                 </div>
               </div>
             </div>
+
+            {/* URL Security Analysis with Google Safe Browsing Breakdown */}
+            {reportData.url_security_analysis?.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-emerald-400" /> URL Security Analysis & Safe Browsing
+                </h3>
+                <div className="space-y-3">
+                  {reportData.url_security_analysis.map((item: any, idx: number) => {
+                    const sb = item.safe_browsing;
+                    const isThreat = sb?.status === 'THREAT_DETECTED';
+                    const isClean = sb?.status === 'NO_KNOWN_THREAT_DETECTED';
+                    return (
+                      <div key={idx} className="bg-black/40 border border-white/10 p-4 rounded-lg space-y-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <span className="font-mono text-xs font-bold text-white truncate max-w-xl">{item.url}</span>
+                          <span className={`px-2.5 py-0.5 rounded text-xs font-bold font-mono uppercase inline-flex items-center gap-1.5 w-fit ${
+                            isThreat ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                            isClean ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                            'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                          }`}>
+                            {isThreat ? <ShieldX className="w-3.5 h-3.5" /> : isClean ? <ShieldCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                            {isThreat ? 'THREAT DETECTED' : isClean ? 'NO KNOWN THREAT' : 'UNABLE TO VERIFY'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs border-t border-white/5 pt-2">
+                          <div>
+                            <span className="text-[10px] text-gray-500 uppercase font-mono block">Threat Category</span>
+                            <span className="text-gray-200 font-semibold">{sb?.threat_types?.join(', ') || 'None Listed'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-500 uppercase font-mono block">Severity / Source</span>
+                            <span className="text-gray-200 font-semibold">{sb?.severity} • {sb?.source}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-gray-500 uppercase font-mono block">Forensic Interpretation</span>
+                            <span className="text-gray-400 text-[11px] leading-tight block">{sb?.interpretation}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* MITRE ATT&CK Matrix */}
             {reportData.mitre_attack_matrix?.length > 0 && (

@@ -222,6 +222,26 @@ class ReportGenerator:
                 "provider_queries_count": len(threat_intel_results),
                 "verdicts": threat_intel_results,
             },
+            "url_security_analysis": [
+                {
+                    "url": ioc.value,
+                    "safe_browsing": next((
+                        {
+                            "status": "THREAT_DETECTED" if ti.get("verdict") == "MALICIOUS" else ("NO_KNOWN_THREAT_DETECTED" if ti.get("verdict") == "CLEAN" else "UNABLE_TO_VERIFY"),
+                            "threat_types": ti.get("categories", []),
+                            "severity": "HIGH" if ti.get("verdict") == "MALICIOUS" else ("INFO" if ti.get("verdict") == "CLEAN" else "UNKNOWN"),
+                            "source": "Google Safe Browsing",
+                            "interpretation": "The URL matches a known threat classification in Google Safe Browsing index." if ti.get("verdict") == "MALICIOUS" else ("No known Safe Browsing threat was identified. This result does not guarantee that the URL is legitimate." if ti.get("verdict") == "CLEAN" else "Safe Browsing verification was unavailable or rate-limited.")
+                        } for ti in threat_intel_results if ti.get("provider") == "GoogleSafeBrowsing" and ti.get("indicator") == ioc.value
+                    ), {
+                        "status": "NO_KNOWN_THREAT_DETECTED",
+                        "threat_types": [],
+                        "severity": "INFO",
+                        "source": "Google Safe Browsing",
+                        "interpretation": "No known Safe Browsing threat was identified. This result does not guarantee that the URL is legitimate."
+                    })
+                } for ioc in iocs if ioc.ioc_type.upper() == "URL"
+            ],
             "indicators_of_compromise": [
                 {
                     "type": i.ioc_type,

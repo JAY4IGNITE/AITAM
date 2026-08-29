@@ -8,6 +8,7 @@ from ..models.investigation import Investigation, InvestigationStatus, InputType
 from ..models.event import InvestigationEvent
 from ..models.autonomous import TriageResult, InvestigationPlan, Incident
 from ..models.journey import RiskAssessment
+from ..models.iocs import IOC
 from ..engine.agent_router import AgentRouter
 from ..engine.correlation import FindingCorrelationService
 from ..engine.risk import RiskEngine
@@ -45,6 +46,15 @@ class Orchestrator:
                 
                 threat_object = UniversalInputProcessor.process_input(inv.input_type, inv.target)
                 inv.normalized_input = threat_object.normalized_text
+                
+                for ind in threat_object.extracted_indicators:
+                    session.add(IOC(
+                        investigation_id=inv.id,
+                        ioc_type=ind.type,
+                        value=ind.value,
+                        source_agent="UniversalInputProcessor",
+                        confidence=0.95
+                    ))
                 await session.commit()
                 
                 # 2. AUTONOMOUS TRIAGE AGENT

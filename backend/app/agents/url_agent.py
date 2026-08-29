@@ -8,6 +8,7 @@ from .base import BaseAgent
 from ..models.agent import AgentRun, Evidence
 from ..models.finding import Finding
 from ..models.investigation import Investigation
+from ..models.iocs import IOC
 from ..schemas.agent_io import AgentResult, Signal
 
 # Curated lists of suspicious TLDs, URL shorteners, and brand keywords
@@ -212,7 +213,7 @@ class URLIntelligenceAgent(BaseAgent):
             ))
             evidence_items.append({"type": "KEYWORDS", "fact": f"Detected lure keywords: {', '.join(unique_kw)}"})
 
-        # Save findings to DB
+        # Save findings and IOCs to DB
         if findings:
             session.add_all(findings)
             for ev in evidence_items:
@@ -222,6 +223,23 @@ class URLIntelligenceAgent(BaseAgent):
                     evidence_type=ev["type"],
                     severity="high" if any(f.severity == "high" for f in findings) else "medium",
                     observed_fact=ev["fact"],
+                    confidence=0.95
+                ))
+
+        if target_url:
+            session.add(IOC(
+                investigation_id=investigation_id,
+                ioc_type="URL",
+                value=target_url,
+                source_agent=cls.agent_name,
+                confidence=0.95
+            ))
+            if hostname:
+                session.add(IOC(
+                    investigation_id=investigation_id,
+                    ioc_type="IP" if is_ip else "DOMAIN",
+                    value=hostname,
+                    source_agent=cls.agent_name,
                     confidence=0.95
                 ))
 

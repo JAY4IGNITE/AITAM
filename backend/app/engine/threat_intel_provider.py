@@ -298,6 +298,7 @@ class VirusTotalProvider(ThreatIntelProvider):
 class GoogleSafeBrowsingProvider(ThreatIntelProvider):
     """
     Google Safe Browsing API v4 Provider.
+    Delegates to dedicated SafeBrowsingService.
     """
     provider_name = "GoogleSafeBrowsing"
     provider_version = "4.0.0"
@@ -305,99 +306,67 @@ class GoogleSafeBrowsingProvider(ThreatIntelProvider):
 
     def __init__(self):
         super().__init__()
-        self.api_key = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "")
-        self.enabled = bool(self.api_key)
+        self.enabled = bool(os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", ""))
 
     async def lookup(self, indicator: str, indicator_type: str) -> ThreatIntelResult:
-        if not self.api_key or indicator_type != "URL":
+        if indicator_type != "URL":
             return ThreatIntelResult(
                 provider=self.provider_name,
                 indicator_type=indicator_type,
                 indicator=indicator,
                 verdict=Verdict.UNKNOWN,
                 confidence=0.0,
-                evidence=["Google Safe Browsing key not configured or non-URL indicator."],
+                evidence=["Google Safe Browsing only evaluates URL indicators."],
                 lookup_timestamp=datetime.now(timezone.utc),
                 provider_metadata={"status": "skipped"}
             )
 
-        endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={self.api_key}"
-        payload = {
-            "client": {"clientId": "threatlens-soc", "clientVersion": "2.0.0"},
-            "threatInfo": {
-                "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
-                "platformTypes": ["ANY_PLATFORM"],
-                "threatEntryTypes": ["URL"],
-                "threatEntries": [{"url": indicator}]
-            }
-        }
+        from ..services.safe_browsing import safe_browsing_service
+        res = await safe_browsing_service.check_url(indicator)
+        self.latency_ms = res.latency_ms
+        self.last_error = res.error
 
-        start_time = asyncio.get_event_loop().time()
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.post(endpoint, json=payload)
-
-            end_time = asyncio.get_event_loop().time()
-            self.latency_ms = (end_time - start_time) * 1000
-
-            if resp.status_code != 200:
-                self.last_error = f"HTTP {resp.status_code}"
-                return ThreatIntelResult(
-                    provider=self.provider_name,
-                    indicator_type=indicator_type,
-                    indicator=indicator,
-                    verdict=Verdict.UNKNOWN,
-                    confidence=0.0,
-                    evidence=[f"Safe Browsing API error: HTTP {resp.status_code}"],
-                    lookup_timestamp=datetime.now(timezone.utc),
-                    provider_metadata={"error": resp.text}
-                )
-
-            data = resp.json()
-            matches = data.get("matches", [])
-
+        if res.threat_detected:
             self.last_success = datetime.now(timezone.utc)
-            self.last_error = None
-
-            if matches:
-                threat_types = [m.get("threatType") for m in matches]
-                return ThreatIntelResult(
-                    provider=self.provider_name,
-                    indicator_type=indicator_type,
-                    indicator=indicator,
-                    verdict=Verdict.MALICIOUS,
-                    confidence=0.96,
-                    reputation_score=15,
-                    categories=threat_types,
-                    evidence=[f"Google Safe Browsing match: {', '.join(threat_types)}"],
-                    lookup_timestamp=datetime.now(timezone.utc),
-                    provider_metadata={"matches": matches}
-                )
-            else:
-                return ThreatIntelResult(
-                    provider=self.provider_name,
-                    indicator_type=indicator_type,
-                    indicator=indicator,
-                    verdict=Verdict.CLEAN,
-                    confidence=0.75,
-                    reputation_score=90,
-                    categories=[],
-                    evidence=["No threat matches found in Google Safe Browsing index."],
-                    lookup_timestamp=datetime.now(timezone.utc),
-                    provider_metadata={"matches": []}
-                )
-
-        except Exception as e:
-            self.last_error = str(e)
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.MALICIOUS,
+                confidence=0.96,
+                reputation_score=15,
+                categories=res.threat_types,
+                evidence=[f"Google Safe Browsing match: {', '.join(res.threat_types)} (Platform: {', '.join(res.platform_types) or 'ANY'})"],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata=res.model_dump(mode='json')
+            )
+        elif res.checked and res.safe:
+            self.last_success = datetime.now(timezone.utc)
+            return ThreatIntelResult(
+                provider=self.provider_name,
+                indicator_type=indicator_type,
+                indicator=indicator,
+                verdict=Verdict.CLEAN,
+                confidence=0.75,
+                reputation_score=90,
+                categories=[],
+                evidence=["No known Safe Browsing threat detected. (Note: does not guarantee URL is legitimate)"],
+                lookup_timestamp=datetime.now(timezone.utc),
+                provider_metadata=res.model_dump(mode='json')
+            )
+        else:
+            err_desc = f"Google Safe Browsing unavailable ({res.error})" if res.error else "Safe Browsing check failed"
             return ThreatIntelResult(
                 provider=self.provider_name,
                 indicator_type=indicator_type,
                 indicator=indicator,
                 verdict=Verdict.UNKNOWN,
                 confidence=0.0,
-                evidence=[f"Google Safe Browsing lookup failed: {str(e)}"],
+                reputation_score=50,
+                categories=[],
+                evidence=[err_desc],
                 lookup_timestamp=datetime.now(timezone.utc),
-                provider_metadata={"error": str(e)}
+                provider_metadata=res.model_dump(mode='json')
             )
 
 class DatabaseThreatIntelProvider(ThreatIntelProvider):
