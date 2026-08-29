@@ -23,16 +23,27 @@ Built to drastically reduce Tier-1 SOC analyst workload, ThreatLens orchestrates
 
 ---
 
-## ✨ Key Capabilities
+## ✨ Features & Capabilities
 
-| Capability | Description |
-| :--- | :--- |
-| **Universal Input Processor** | Ingests URLs, raw text, phishing emails, QR payloads, and normalizes them for unified analysis. |
-| **Autonomous Multi-Agent Hive** | Dynamic orchestration of specialized agents: URL Intelligence, Sender Reputation, Attachment Sandbox, and Social Engineering Analysis. |
-| **Live Email Ingestion** | Fully automated integration with **TempMail.so**. ThreatLens provisions temporary inboxes, intercepts real live emails, and triggers instant investigations. |
-| **MITRE ATT&CK® Integration** | Automatically maps identified adversary tactics and techniques to the MITRE framework for standardized reporting. |
-| **Explainable Evidence Graph** | Constructs a visual "Attack Journey" mapping relationships between extracted IOCs, agent observations, and final risk scores. |
-| **Dark-Mode SOC Dashboard** | High-density, professional Antigravity monochrome design system (`#09090b` blacks, `#ffffff` whites) optimized for security analysts. |
+### 🧠 Autonomous AI Orchestration
+*   **Multi-Agent Hive Mind:** Dynamically spawns specialized agents (URL, Sender Reputation, Sandbox, Social Engineering) to work in parallel on a single investigation.
+*   **LLM-Driven Triage:** Initial alerts are evaluated by an LLM to determine severity, required agents, and extraction of entities.
+*   **Explainable Evidence Graphs:** Visualizes the exact decision-making process ("Attack Journey"), mapping how IOCs correlate to the final risk score.
+
+### 🛡️ Threat Intelligence Integration
+*   **Google Safe Browsing & VirusTotal:** Deep integration for immediate URL, domain, and file hash reputation checks.
+*   **URLhaus:** Zero-day malware domain and payload delivery network detection.
+*   **Automated SIEM Rules:** One-click generation of YARA and Suricata rules based on the investigation's forensic artifacts.
+
+### 📧 Live & Automated Ingestion
+*   **Universal Input Processor:** Seamlessly parses raw text, standalone URLs, SMS logs, and QR code payloads.
+*   **Live Phishing Inbox (TempMail.so):** Instantly provisions temporary email addresses, intercepts live inbound emails, and automatically triggers end-to-end investigations without human intervention.
+*   **Automated Normalization:** Strips tracking pixels, normalizes unicode spoofing, and extracts hidden payloads.
+
+### 🔐 Enterprise SOC Workflows
+*   **MITRE ATT&CK® Mapping:** Every investigation automatically identifies and tags the adversary tactics and techniques used.
+*   **One-Click Exporters:** Export detailed forensic dossiers in structured JSON or Markdown formats for incident response (IR) teams.
+*   **Antigravity Dark Mode UI:** High-density, zero-distraction monochrome design built for continuous security monitoring.
 
 ---
 
